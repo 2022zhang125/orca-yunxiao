@@ -147,6 +147,12 @@ import type {
   JiraIssueFilter,
   JiraIssueUpdate,
   JiraSiteSelection,
+  YunxiaoAccountSelection,
+  YunxiaoConnectArgs,
+  YunxiaoCreateWorkItemArgs,
+  YunxiaoWorkItemCategory,
+  YunxiaoWorkItemFilter,
+  YunxiaoWorkItemUpdate,
   LinearIssueUpdate,
   LinearProjectSummary,
   LinearWorkspaceSelection,
@@ -661,6 +667,29 @@ import {
   searchIssues as searchJiraIssues,
   updateIssue as updateJiraIssue
 } from '../jira/issues'
+import {
+  connect as connectYunxiao,
+  disconnect as disconnectYunxiao,
+  getStatus as getYunxiaoStatus,
+  selectAccount as selectYunxiaoAccount,
+  testConnection as testYunxiaoConnection
+} from '../yunxiao/client'
+import {
+  getWorkItem as getYunxiaoWorkItem,
+  getWorkItemComments as getYunxiaoWorkItemComments,
+  getWorkItemFile as getYunxiaoWorkItemFile,
+  listWorkItems as listYunxiaoWorkItems,
+  searchWorkItems as searchYunxiaoWorkItems
+} from '../yunxiao/work-items'
+import {
+  addWorkItemComment as addYunxiaoWorkItemComment,
+  createWorkItem as createYunxiaoWorkItem,
+  updateWorkItem as updateYunxiaoWorkItem
+} from '../yunxiao/work-item-mutations'
+import {
+  listProjects as listYunxiaoProjects,
+  listWorkItemTypes as listYunxiaoWorkItemTypes
+} from '../yunxiao/projects'
 import {
   clearProjectItemFieldValue,
   getProjectViewTable,
@@ -1776,6 +1805,7 @@ function mergeRuntimeFolderWorkspace(repo: Repo, worktreeId: string, meta: Workt
     linkedLinearIssueOrganizationUrlKey: meta.linkedLinearIssueOrganizationUrlKey ?? null,
     linkedGitLabMR: meta.linkedGitLabMR ?? null,
     linkedGitLabIssue: meta.linkedGitLabIssue ?? null,
+    linkedYunxiaoWorkItem: meta.linkedYunxiaoWorkItem ?? null,
     linkedBitbucketPR: meta.linkedBitbucketPR ?? null,
     linkedAzureDevOpsPR: meta.linkedAzureDevOpsPR ?? null,
     linkedGiteaPR: meta.linkedGiteaPR ?? null,
@@ -13455,6 +13485,7 @@ export class OrcaRuntimeService {
         linkedLinearIssue: meta?.linkedLinearIssue ?? null,
         linkedGitLabMR: meta?.linkedGitLabMR ?? null,
         linkedGitLabIssue: meta?.linkedGitLabIssue ?? null,
+        linkedYunxiaoWorkItem: meta?.linkedYunxiaoWorkItem ?? null,
         comment: meta?.comment ?? '',
         isPinned: meta?.isPinned ?? false,
         isActive: false,
@@ -13503,6 +13534,7 @@ export class OrcaRuntimeService {
         linkedLinearIssue: worktree.linkedLinearIssue ?? null,
         linkedGitLabMR: worktree.linkedGitLabMR ?? null,
         linkedGitLabIssue: worktree.linkedGitLabIssue ?? null,
+        linkedYunxiaoWorkItem: worktree.linkedYunxiaoWorkItem ?? null,
         comment: worktree.comment,
         isPinned: worktree.isPinned,
         isActive: false,
@@ -17181,6 +17213,7 @@ export class OrcaRuntimeService {
     linkedLinearIssueOrganizationUrlKey?: string | null
     linkedGitLabMR?: number | null
     linkedGitLabIssue?: number | null
+    linkedYunxiaoWorkItem?: string | null
     linkedBitbucketPR?: number | null
     linkedAzureDevOpsPR?: number | null
     linkedGiteaPR?: number | null
@@ -17272,6 +17305,9 @@ export class OrcaRuntimeService {
           : {}),
         ...(args.linkedGitLabIssue !== undefined
           ? { linkedGitLabIssue: args.linkedGitLabIssue }
+          : {}),
+        ...(args.linkedYunxiaoWorkItem !== undefined
+          ? { linkedYunxiaoWorkItem: args.linkedYunxiaoWorkItem }
           : {}),
         ...(args.linkedGitLabMR !== undefined ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
         ...(args.linkedBitbucketPR !== undefined
@@ -17850,6 +17886,9 @@ export class OrcaRuntimeService {
       ...(args.linkedGitLabIssue !== undefined
         ? { linkedGitLabIssue: args.linkedGitLabIssue }
         : {}),
+      ...(args.linkedYunxiaoWorkItem !== undefined
+        ? { linkedYunxiaoWorkItem: args.linkedYunxiaoWorkItem }
+        : {}),
       ...(args.linkedGitLabMR !== undefined ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
       ...(args.linkedBitbucketPR !== undefined
         ? { linkedBitbucketPR: args.linkedBitbucketPR }
@@ -18173,6 +18212,7 @@ export class OrcaRuntimeService {
       linkedLinearIssueOrganizationUrlKey?: string | null
       linkedGitLabMR?: number | null
       linkedGitLabIssue?: number | null
+      linkedYunxiaoWorkItem?: string | null
       linkedBitbucketPR?: number | null
       linkedAzureDevOpsPR?: number | null
       linkedGiteaPR?: number | null
@@ -18227,6 +18267,9 @@ export class OrcaRuntimeService {
           : {}),
         ...(args.linkedGitLabMR != null ? { linkedGitLabMR: args.linkedGitLabMR } : {}),
         ...(args.linkedGitLabIssue != null ? { linkedGitLabIssue: args.linkedGitLabIssue } : {}),
+        ...(args.linkedYunxiaoWorkItem != null
+          ? { linkedYunxiaoWorkItem: args.linkedYunxiaoWorkItem }
+          : {}),
         ...(args.linkedBitbucketPR != null ? { linkedBitbucketPR: args.linkedBitbucketPR } : {}),
         ...(args.linkedAzureDevOpsPR != null
           ? { linkedAzureDevOpsPR: args.linkedAzureDevOpsPR }
@@ -28195,6 +28238,99 @@ export class OrcaRuntimeService {
     siteId?: string
   ): ReturnType<typeof getJiraProjectStatusOrder> {
     return getJiraProjectStatusOrder(projectKey, siteId)
+  }
+
+  // ── 云效 (Yunxiao) integration ──
+
+  yunxiaoConnect(args: YunxiaoConnectArgs): ReturnType<typeof connectYunxiao> {
+    return connectYunxiao(args)
+  }
+
+  yunxiaoDisconnect(accountId?: string): { ok: true } {
+    disconnectYunxiao(accountId)
+    return { ok: true }
+  }
+
+  yunxiaoSelectAccount(accountId: YunxiaoAccountSelection): ReturnType<typeof getYunxiaoStatus> {
+    return selectYunxiaoAccount(accountId)
+  }
+
+  yunxiaoStatus(): ReturnType<typeof getYunxiaoStatus> {
+    return getYunxiaoStatus()
+  }
+
+  yunxiaoTestConnection(accountId?: string): ReturnType<typeof testYunxiaoConnection> {
+    return testYunxiaoConnection(accountId)
+  }
+
+  yunxiaoSearchWorkItems(
+    query: string,
+    limit = 30,
+    accountId?: YunxiaoAccountSelection
+  ): ReturnType<typeof searchYunxiaoWorkItems> {
+    return searchYunxiaoWorkItems(query, Math.min(Math.max(1, limit), 100), accountId)
+  }
+
+  yunxiaoListWorkItems(
+    filter?: YunxiaoWorkItemFilter,
+    limit = 30,
+    accountId?: YunxiaoAccountSelection
+  ): ReturnType<typeof listYunxiaoWorkItems> {
+    return listYunxiaoWorkItems(filter, Math.min(Math.max(1, limit), 100), accountId)
+  }
+
+  yunxiaoGetWorkItem(
+    workItemId: string,
+    accountId?: string
+  ): ReturnType<typeof getYunxiaoWorkItem> {
+    return getYunxiaoWorkItem(workItemId, accountId)
+  }
+
+  yunxiaoGetWorkItemFile(
+    workItemId: string,
+    fileId: string,
+    accountId?: string
+  ): ReturnType<typeof getYunxiaoWorkItemFile> {
+    return getYunxiaoWorkItemFile(workItemId, fileId, accountId)
+  }
+
+  yunxiaoCreateWorkItem(args: YunxiaoCreateWorkItemArgs): ReturnType<typeof createYunxiaoWorkItem> {
+    return createYunxiaoWorkItem(args)
+  }
+
+  yunxiaoUpdateWorkItem(
+    workItemId: string,
+    updates: YunxiaoWorkItemUpdate,
+    accountId?: string
+  ): ReturnType<typeof updateYunxiaoWorkItem> {
+    return updateYunxiaoWorkItem(workItemId, updates, accountId)
+  }
+
+  yunxiaoAddWorkItemComment(
+    workItemId: string,
+    body: string,
+    accountId?: string
+  ): ReturnType<typeof addYunxiaoWorkItemComment> {
+    return addYunxiaoWorkItemComment(workItemId, body, accountId)
+  }
+
+  yunxiaoWorkItemComments(
+    workItemId: string,
+    accountId?: string
+  ): ReturnType<typeof getYunxiaoWorkItemComments> {
+    return getYunxiaoWorkItemComments(workItemId, accountId)
+  }
+
+  yunxiaoListProjects(accountId?: YunxiaoAccountSelection): ReturnType<typeof listYunxiaoProjects> {
+    return listYunxiaoProjects(accountId)
+  }
+
+  yunxiaoListWorkItemTypes(
+    spaceId: string,
+    category?: YunxiaoWorkItemCategory,
+    accountId?: string
+  ): ReturnType<typeof listYunxiaoWorkItemTypes> {
+    return listYunxiaoWorkItemTypes(spaceId, category, accountId)
   }
 
   // ── Browser automation ──

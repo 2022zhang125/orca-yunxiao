@@ -339,13 +339,14 @@ export type FolderWorkspace = {
 }
 
 export type FolderWorkspaceLinkedTask = {
-  provider: 'github' | 'gitlab' | 'linear' | 'jira'
+  provider: 'github' | 'gitlab' | 'linear' | 'jira' | 'yunxiao'
   type: 'issue' | 'pr' | 'mr'
   number: number
   title: string
   url: string
   linearIdentifier?: string
   jiraIdentifier?: string
+  yunxiaoIdentifier?: string
   repoId?: string
 }
 
@@ -489,6 +490,10 @@ export type Worktree = {
   // to typecheck and load without migration.
   linkedGitLabMR?: number | null
   linkedGitLabIssue?: number | null
+  /** 云效 work item serial (`RTOH-76`), set when a workspace is created to fix
+   *  it. Durable so the task list still knows which row is already being
+   *  worked on after a restart, instead of offering the fix a second time. */
+  linkedYunxiaoWorkItem?: string | null
   linkedBitbucketPR?: number | null
   linkedAzureDevOpsPR?: number | null
   linkedGiteaPR?: number | null
@@ -595,6 +600,7 @@ export type WorktreeMeta = {
   linkedGitLabMR?: number | null
   /** Optional for backward compatibility — see Worktree.linkedGitLabIssue. */
   linkedGitLabIssue?: number | null
+  linkedYunxiaoWorkItem?: string | null
   /** Optional for backward compatibility — see Worktree.linkedBitbucketPR. */
   linkedBitbucketPR?: number | null
   /** Optional for backward compatibility — see Worktree.linkedAzureDevOpsPR. */
@@ -1956,6 +1962,32 @@ export type {
   JiraViewer
 } from './jira-types'
 
+export type {
+  YunxiaoAccount,
+  YunxiaoAccountSelection,
+  YunxiaoComment,
+  YunxiaoConnectArgs,
+  YunxiaoConnectionStatus,
+  YunxiaoCreateWorkItemArgs,
+  YunxiaoCreateWorkItemResult,
+  YunxiaoLabel,
+  YunxiaoMutationResult,
+  YunxiaoOrganization,
+  YunxiaoProject,
+  YunxiaoStatus,
+  YunxiaoStatusStage,
+  YunxiaoUser,
+  YunxiaoViewer,
+  YunxiaoWorkItem,
+  YunxiaoWorkItemCategory,
+  YunxiaoWorkItemFile,
+  YunxiaoWorkItemFilter,
+  YunxiaoWorkItemType,
+  YunxiaoWorkItemUpdate
+} from './yunxiao-types'
+
+export { YUNXIAO_DEFAULT_ENDPOINT, YUNXIAO_WEB_BASE_URL } from './yunxiao-types'
+
 /**
  * GitHub API rate-limit buckets surfaced in the TaskPage header so users can
  * see remaining budget before they hit the wall. `core` = REST (5000/hr),
@@ -2181,6 +2213,7 @@ export type CreateWorktreeArgs = {
   linkedLinearIssueWorkspaceId?: string | null
   linkedLinearIssueOrganizationUrlKey?: string | null
   linkedGitLabIssue?: number
+  linkedYunxiaoWorkItem?: string | null
   linkedGitLabMR?: number
   linkedBitbucketPR?: number | null
   linkedAzureDevOpsPR?: number | null
@@ -2830,6 +2863,8 @@ export type GlobalSettings = {
   visibleTaskProviders: TaskProvider[]
   /** Why: one-shot guard to make Jira visible for existing profiles once, without re-adding after a later opt-out. */
   visibleTaskProvidersDefaultedForJira: boolean
+  /** Why: same one-shot guard as Jira, for the later 云效 provider addition. */
+  visibleTaskProvidersDefaultedForYunxiao: boolean
   /** Persisted repo selection (cross-repo tasks view). null = sticky-all (includes future-added repos);
    *  string[] = frozen curated subset (ineligible ids dropped on load; empty after drop is treated as null). */
   defaultRepoSelection: string[] | null

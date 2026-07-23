@@ -745,6 +745,7 @@ const FolderWorkspaceLinkedTaskArgs = z
     url: z.string().min(1),
     linearIdentifier: z.string().min(1).optional(),
     jiraIdentifier: z.string().min(1).optional(),
+    yunxiaoIdentifier: z.string().min(1).optional(),
     repoId: z.string().min(1).optional()
   })
   .nullable()

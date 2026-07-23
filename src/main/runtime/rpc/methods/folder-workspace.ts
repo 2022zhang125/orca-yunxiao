@@ -12,6 +12,7 @@ const FolderWorkspaceLinkedTask = z
     url: requiredString('Missing linked task URL'),
     linearIdentifier: OptionalString,
     jiraIdentifier: OptionalString,
+    yunxiaoIdentifier: OptionalString,
     repoId: OptionalString
   })
   .nullable()

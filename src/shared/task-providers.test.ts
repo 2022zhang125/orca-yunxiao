@@ -16,7 +16,13 @@ describe('task providers', () => {
   })
 
   it('falls back to all providers when none are visible', () => {
-    expect(normalizeVisibleTaskProviders([])).toEqual(['github', 'gitlab', 'linear', 'jira'])
+    expect(normalizeVisibleTaskProviders([])).toEqual([
+      'github',
+      'gitlab',
+      'linear',
+      'jira',
+      'yunxiao'
+    ])
   })
 
   it('restores a valid saved default when provider settings drifted', () => {
@@ -106,6 +112,15 @@ describe('task providers', () => {
         'bitbucket'
       )
     ).toEqual(['github'])
+  })
+
+  it('keeps 云效 selectable while disconnected so Tasks can start setup', () => {
+    expect(
+      filterAvailableTaskProviders(['yunxiao'], {
+        gitlabInstalled: false,
+        linearConnected: false
+      })
+    ).toEqual(['yunxiao'])
   })
 
   it('falls back to GitHub when every preferred provider is unavailable', () => {

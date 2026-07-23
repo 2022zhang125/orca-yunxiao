@@ -1768,6 +1768,85 @@ const api = {
     }): Promise<JiraProjectStatusOrder> => ipcRenderer.invoke('jira:getProjectStatusOrder', args)
   },
 
+  yunxiao: {
+    connect: (args: {
+      organizationId: string
+      accessToken: string
+      endpoint?: string
+    }): Promise<{ ok: true; viewer: unknown } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('yunxiao:connect', args),
+
+    disconnect: (args?: { accountId?: string }): Promise<void> =>
+      ipcRenderer.invoke('yunxiao:disconnect', args),
+
+    selectAccount: (args: { accountId: string }): Promise<unknown> =>
+      ipcRenderer.invoke('yunxiao:selectAccount', args),
+
+    status: (): Promise<unknown> => ipcRenderer.invoke('yunxiao:status'),
+
+    testConnection: (args?: {
+      accountId?: string
+    }): Promise<{ ok: true; viewer: unknown } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('yunxiao:testConnection', args),
+
+    searchWorkItems: (args: {
+      query: string
+      limit?: number
+      accountId?: string
+    }): Promise<unknown[]> => ipcRenderer.invoke('yunxiao:searchWorkItems', args),
+
+    listWorkItems: (args?: {
+      filter?: 'assigned' | 'created' | 'all' | 'done'
+      limit?: number
+      accountId?: string
+    }): Promise<unknown[]> => ipcRenderer.invoke('yunxiao:listWorkItems', args),
+
+    getWorkItem: (args: { workItemId: string; accountId?: string }): Promise<unknown> =>
+      ipcRenderer.invoke('yunxiao:getWorkItem', args),
+    getWorkItemFile: (args: {
+      workItemId: string
+      fileId: string
+      accountId?: string
+    }): Promise<unknown> => ipcRenderer.invoke('yunxiao:getWorkItemFile', args),
+
+    createWorkItem: (args: {
+      accountId?: string
+      spaceId: string
+      workItemTypeId: string
+      title: string
+      description?: string
+      assigneeUserId?: string
+    }): Promise<
+      { ok: true; id: string; serialNumber: string; url: string } | { ok: false; error: string }
+    > => ipcRenderer.invoke('yunxiao:createWorkItem', args),
+
+    updateWorkItem: (args: {
+      workItemId: string
+      updates: unknown
+      accountId?: string
+    }): Promise<{ ok: true } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('yunxiao:updateWorkItem', args),
+
+    addWorkItemComment: (args: {
+      workItemId: string
+      body: string
+      accountId?: string
+    }): Promise<{ ok: true; id: string } | { ok: false; error: string }> =>
+      ipcRenderer.invoke('yunxiao:addWorkItemComment', args),
+
+    workItemComments: (args: { workItemId: string; accountId?: string }): Promise<unknown[]> =>
+      ipcRenderer.invoke('yunxiao:workItemComments', args),
+
+    listProjects: (args?: { accountId?: string }): Promise<unknown[]> =>
+      ipcRenderer.invoke('yunxiao:listProjects', args),
+
+    listWorkItemTypes: (args: {
+      spaceId: string
+      category?: 'Req' | 'Task' | 'Bug'
+      accountId?: string
+    }): Promise<unknown[]> => ipcRenderer.invoke('yunxiao:listWorkItemTypes', args)
+  },
+
   starNag: {
     onShow: (
       callback: (payload?: { mode?: 'gh' | 'web'; surface?: 'card' | 'toast' }) => void
