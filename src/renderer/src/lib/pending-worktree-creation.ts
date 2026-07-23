@@ -70,6 +70,11 @@ export type WorktreeCreationRequest = {
   workspaceStatus?: WorkspaceStatus
   linkedGitLabMR?: number
   linkedGitLabIssue?: number
+  linkedYunxiaoWorkItem?: string | null
+  /** Quiet background create: keep the user's current view instead of fronting
+   *  the creation panel, and never activate the workspace on completion. The
+   *  launching surface (e.g. the 云效 task list) shows progress its own way. */
+  stayOnCurrentView?: boolean
   linkedBitbucketPR?: number | null
   linkedAzureDevOpsPR?: number | null
   linkedGiteaPR?: number | null

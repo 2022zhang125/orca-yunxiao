@@ -24,6 +24,7 @@ import type {
   WorktreeCreationPhase,
   WorktreeCreationRequest
 } from '@/lib/pending-worktree-creation'
+import { stampLinkedYunxiaoWorkItem } from '@/lib/worktree-creation-yunxiao-link'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 
@@ -95,7 +96,13 @@ function revealPendingCreation(
     request
   })
   // Why: the creation panel only renders under the terminal view (App content
-  // router), so force it active so the panel is what fills the content area.
+  // router), so force it active so the panel is what fills the content area —
+  // unless the request asked to stay put, where the sidebar row is the only
+  // progress surface and the user keeps the page they launched from.
+  if (request.stayOnCurrentView) {
+    store.setActivePendingWorktreeCreation(null)
+    return
+  }
   store.setActiveView('terminal')
   store.setSidebarOpen(true)
 }
@@ -199,6 +206,7 @@ async function executeWorktreeCreation(
   if (!useAppStore.getState().pendingWorktreeCreations[creationId]) {
     return
   }
+  await stampLinkedYunxiaoWorkItem(preparedRequest, worktree.id)
   await attachEphemeralVmRuntimeToWorkspace(preparedRequest, worktree.id)
 
   const backendSpawned = result.startupTerminal?.spawned === true
@@ -222,6 +230,7 @@ async function executeWorktreeCreation(
   const completionState = useAppStore.getState()
   const shouldActivateOnCompletion =
     completionState.pendingWorktreeCreations[creationId] !== undefined &&
+    !preparedRequest.stayOnCurrentView &&
     (isPendingCreationSurfaceVisible(creationId) ||
       (completionState.activeView === 'terminal' &&
         completionState.activePendingCreationId === null))

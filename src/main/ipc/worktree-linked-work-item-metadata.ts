@@ -4,6 +4,7 @@ type LinkedWorkItemMetadata = Pick<
   Worktree,
   | 'linkedGitLabMR'
   | 'linkedGitLabIssue'
+  | 'linkedYunxiaoWorkItem'
   | 'linkedBitbucketPR'
   | 'linkedAzureDevOpsPR'
   | 'linkedGiteaPR'
@@ -13,6 +14,7 @@ export function getLinkedWorkItemMetadata(meta: WorktreeMeta | undefined): Linke
   return {
     linkedGitLabMR: meta?.linkedGitLabMR ?? null,
     linkedGitLabIssue: meta?.linkedGitLabIssue ?? null,
+    linkedYunxiaoWorkItem: meta?.linkedYunxiaoWorkItem ?? null,
     linkedBitbucketPR: meta?.linkedBitbucketPR ?? null,
     linkedAzureDevOpsPR: meta?.linkedAzureDevOpsPR ?? null,
     linkedGiteaPR: meta?.linkedGiteaPR ?? null

@@ -657,6 +657,7 @@ export type RuntimeWorktreePsSummary = {
   linkedLinearIssue: string | null
   linkedGitLabMR: number | null
   linkedGitLabIssue: number | null
+  linkedYunxiaoWorkItem: string | null
   comment: string
   isPinned: boolean
   /** True for the worktree currently focused on the desktop/host
