@@ -1785,7 +1785,53 @@
         "jiraToggleSortDirection": "{{value0}}으로 정렬",
         "75a38d7df8": "GitHub data is temporarily unavailable. Its API may be down, rate-limited, or unreachable. Please try again shortly.",
         "noGithubSourceDetected": "No GitHub source detected for",
-        "noGithubSourceDetectedHint": "it may have no GitHub remote, or the source could not be resolved."
+        "noGithubSourceDetectedHint": "it may have no GitHub remote, or the source could not be resolved.",
+        "yunxiao_label": "云效",
+        "yunxiao_created": "Created",
+        "yunxiao_connect_title": "Connect your 云效 organization",
+        "yunxiao_connect_body": "Browse and start work from 云效 work items directly from here.",
+        "yunxiao_connect_cta": "Connect 云效",
+        "yunxiao_hide_cta": "Hide 云效",
+        "yunxiao_list_heading": "云效 work items",
+        "yunxiao_empty_title": "No 云效 work items found",
+        "yunxiao_empty_search": "Try a different title search.",
+        "yunxiao_load_failed": "Failed to load 云效 work items.",
+        "yunxiao_refresh": "Refresh 云效 work items",
+        "yunxiao_search_placeholder": "Search 云效 work items by title",
+        "yunxiao_open_aria": "Open {{value0}} in 云效",
+        "yunxiao_open_tooltip": "Open in 云效",
+        "yunxiao_sprint_label": "Sprint",
+        "yunxiao_open_detail_aria": "Open {{value0}}",
+        "yunxiao_fix_tooltip": "One-click fix",
+        "yunxiao_fix_agent_missing": "Claude is not available on this host, so the fix cannot start automatically.",
+        "yunxiao_detail_expand": "Show details",
+        "yunxiao_detail_collapse": "Hide details",
+        "yunxiao_detail_loading": "Loading details…",
+        "yunxiao_detail_failed": "Could not load this item. Open it in 云效 to see the full content.",
+        "yunxiao_detail_empty": "No description.",
+        "yunxiao_detail_project": "Project",
+        "yunxiao_detail_reporter": "Reporter",
+        "yunxiao_detail_created": "Created",
+        "yunxiao_detail_expected": "Expected",
+        "yunxiao_detail_actual": "Actual",
+        "yunxiao_detail_steps": "Steps to reproduce",
+        "yunxiao_detail_environment": "Environment",
+        "yunxiao_detail_account": "Account",
+        "yunxiao_detail_scope": "Impact",
+        "yunxiao_detail_api": "Endpoint",
+        "yunxiao_detail_attachment": "Attachment {{value0}}",
+        "yunxiao_attachment_loading": "Opening attachment…",
+        "yunxiao_attachment_failed": "This attachment could not be opened. It may have been removed, or the 云效 account may not have access to it.",
+        "yunxiao_attachment_no_preview": "No preview for .{{value0}} files.",
+        "yunxiao_attachment_download": "Download",
+        "yunxiao_attachment_open_external": "Open in browser",
+        "yunxiao_attachment_dialog_description": "Attachment preview",
+        "yunxiao_select_aria": "Select {{value0}} for batch fix",
+        "yunxiao_batch_selected": "{{value0}} selected",
+        "yunxiao_batch_fix_button": "Fix selected",
+        "yunxiao_batch_clear": "Clear",
+        "yunxiao_batch_fix_no_repo": "Select an active repo first so the fixes know where to run.",
+        "yunxiao_view_fix_tooltip": "View fix"
       },
       "Terminal": {
         "73768427cf": "닫기",
@@ -4048,7 +4094,8 @@
           "196c1b5362": "GitLab 작업 열기",
           "0ccba862b8": "GitHub 작업 열기",
           "fee535205b": "작업",
-          "d599269755": "사이드바에서 숨기기"
+          "d599269755": "사이드바에서 숨기기",
+          "open_yunxiao_tasks": "Open 云效 tasks"
         },
         "SidebarRepositoryFilterSection": {
           "d3a9c4cea1": "지우기",
@@ -6748,7 +6795,9 @@
           "dd67a1b6e1": "작업 소스 선택기 및 사이드바 바로가기에 GitLab을 표시합니다.",
           "7c5d7fdc20": "GitLab",
           "1db47236cd": "작업 소스 선택기 및 사이드바 바로가기에 GitHub를 표시합니다.",
-          "e14063e727": "GitHub"
+          "e14063e727": "GitHub",
+          "yunxiao_label": "云效",
+          "yunxiao_description": "Show 云效 in the Tasks source picker and sidebar shortcuts."
         },
         "TerminalAppearanceSection": {
           "a14a427ae4": "창 구분선의 두께입니다.",
@@ -7935,7 +7984,12 @@
             "41ccade05c": "gh",
             "b79c21bd42": "GitHub",
             "7166b9090c": "gh CLI를 통한 GitHub 인증.",
-            "f16e41cc72": "GitHub 연동"
+            "f16e41cc72": "GitHub 연동",
+            "yunxiao_title": "云效 Integration",
+            "yunxiao_description": "Connect a 云效 organization or update its personal access token.",
+            "yunxiao_keyword": "yunxiao",
+            "yunxiao_keyword_cn": "云效",
+            "yunxiao_keyword_aliyun": "aliyun devops"
           }
         },
         "jira": {
@@ -8387,7 +8441,9 @@
             "cf0e3e0c2f": "공급자",
             "2ec54bee51": "작업",
             "765f0c544d": "작업 페이지와 사이드바 바로가기에 표시할 작업 제공자를 선택합니다.",
-            "5b8e4aace5": "작업 제공자"
+            "5b8e4aace5": "작업 제공자",
+            "yunxiao": "yunxiao",
+            "yunxiao_cn": "云效"
           }
         },
         "terminal": {
@@ -9267,6 +9323,21 @@
           "title": "Editor Font Family",
           "description": "Font used by file editors and diff views. Leave empty to follow the terminal font.",
           "placeholder": "Same as terminal font"
+        },
+        "yunxiao": {
+          "integration": {
+            "card": {
+              "connect": "Connect 云效",
+              "add_org": "Add 云效 organization",
+              "checking": "Checking 云效 access before showing setup actions.",
+              "connected_count": "{{value0}} organization{{value1}} connected",
+              "idle": "Browse, create, and start work from 云效 work items.",
+              "credentials_local": "Connect a 云效 organization with a personal access token. Credentials are stored locally and encrypted when local runtime storage supports it.",
+              "credentials_remote": "Connect a 云效 organization with a personal access token. Credentials are sent to the selected remote runtime and stored there with runtime-supported encryption.",
+              "token_scope_note": "Each connected 云效 organization has one token stored by the active runtime.",
+              "stale_hint": "云效 is connected for this runtime. Re-check if the connected organization list looks stale."
+            }
+          }
         }
       },
       "right": {
@@ -13432,6 +13503,24 @@
           },
           "undo": "실행 취소",
           "widthOption": "{{value0}} px"
+        }
+      },
+      "yunxiao": {
+        "connect": {
+          "dialog": {
+            "title": "Connect 云效 organization",
+            "description": "Use your 云效 organization ID and a personal access token to browse work items.",
+            "organization_label": "Organization ID",
+            "token_label": "Personal access token",
+            "token_placeholder": "云效 personal access token",
+            "endpoint_label": "OpenAPI endpoint (optional)",
+            "token_hint": "Create a token under 个人设置 › 个人访问令牌 in 云效, and copy the organization ID from 组织管理 › 基本信息.",
+            "storage_local": "Your token is stored locally and encrypted when local runtime storage supports it.",
+            "storage_remote": "Your token is sent to the selected remote runtime and stored there with runtime-supported encryption.",
+            "cancel": "Cancel",
+            "verifying": "Verifying…",
+            "connect": "Connect"
+          }
         }
       }
     },

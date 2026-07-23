@@ -1,6 +1,7 @@
 import React from 'react'
 import { EyeOff, Github, Gitlab, List } from 'lucide-react'
 import { JiraIcon } from '@/components/icons/JiraIcon'
+import { YunxiaoIcon } from '@/components/icons/YunxiaoIcon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
 import {
   ContextMenu,
@@ -245,6 +246,18 @@ export function SidebarTaskNavButton(): React.JSX.Element | null {
                 onOpen={() => openTaskPage({ taskSource: 'jira' })}
               >
                 <JiraIcon className="size-3.5" />
+              </TaskProviderShortcut>
+            ) : null}
+            {visibleTaskProviders.includes('yunxiao') ? (
+              <TaskProviderShortcut
+                canBrowseTasks={canBrowseTasks}
+                label={translate(
+                  'auto.components.sidebar.SidebarNav.open_yunxiao_tasks',
+                  'Open 云效 tasks'
+                )}
+                onOpen={() => openTaskPage({ taskSource: 'yunxiao' })}
+              >
+                <YunxiaoIcon className="size-3.5" />
               </TaskProviderShortcut>
             ) : null}
           </span>

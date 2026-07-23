@@ -101,6 +101,12 @@
   --color-status-success: var(--status-success);
   --color-status-success-background: var(--status-success-background);
   --color-status-success-border: var(--status-success-border);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-background: var(--status-warning-background);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-background: var(--status-danger-background);
+  --color-status-danger-border: var(--status-danger-border);
   --color-tab-group-split-divider: var(--tab-group-split-divider);
   --color-tab-group-split-divider-strong: var(--tab-group-split-divider-strong);
   --color-git-graph-ref: var(--git-graph-ref);
@@ -155,6 +161,12 @@
   --status-success: #15803d;
   --status-success-background: color-mix(in srgb, var(--status-success) 10%, transparent);
   --status-success-border: color-mix(in srgb, var(--status-success) 25%, transparent);
+  --status-warning: #b45309;
+  --status-warning-background: color-mix(in srgb, var(--status-warning) 10%, transparent);
+  --status-warning-border: color-mix(in srgb, var(--status-warning) 25%, transparent);
+  --status-danger: #b91c1c;
+  --status-danger-background: color-mix(in srgb, var(--status-danger) 10%, transparent);
+  --status-danger-border: color-mix(in srgb, var(--status-danger) 25%, transparent);
   --chart-1: var(--color-blue-300);
   --chart-2: var(--color-blue-500);
   --chart-3: var(--color-blue-600);
@@ -241,6 +253,12 @@
   --status-success: #86efac;
   --status-success-background: color-mix(in srgb, var(--status-success) 10%, transparent);
   --status-success-border: color-mix(in srgb, var(--status-success) 25%, transparent);
+  --status-warning: #fcd34d;
+  --status-warning-background: color-mix(in srgb, var(--status-warning) 10%, transparent);
+  --status-warning-border: color-mix(in srgb, var(--status-warning) 25%, transparent);
+  --status-danger: #fca5a5;
+  --status-danger-background: color-mix(in srgb, var(--status-danger) 10%, transparent);
+  --status-danger-border: color-mix(in srgb, var(--status-danger) 25%, transparent);
   --chart-1: var(--color-blue-300);
   --chart-2: var(--color-blue-500);
   --chart-3: var(--color-blue-600);
@@ -1581,6 +1599,48 @@
   animation: collapsible-up 180ms ease-out;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-height-content[data-state='open'],
+  .collapsible-height-content[data-state='closed'] {
+    animation-duration: 0ms;
+  }
+}
+
+/* Indeterminate sweep for a list whose rows are being replaced in place. */
+.list-refresh-indicator {
+  overflow: hidden;
+}
+
+.list-refresh-indicator::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--ring), transparent);
+  animation: list-refresh-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes list-refresh-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-refresh-indicator::after {
+    width: 100%;
+    background: var(--ring);
+    opacity: 0.5;
+    animation: none;
+  }
+}
+
 @keyframes collapsible-down {
   from {
     height: 0;
@@ -1602,6 +1662,31 @@
   to {
     height: 0;
     opacity: 0;
+  }
+}
+
+/* Looping amber wash for a 云效 fix stopped on a question — the loop is the
+   reminder, so it never settles. Loud on purpose; every other fix state is
+   static. */
+.yunxiao-fix-attention {
+  animation: yunxiao-fix-attention-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes yunxiao-fix-attention-pulse {
+  0%,
+  100% {
+    background-color: var(--status-warning-background);
+  }
+
+  50% {
+    background-color: color-mix(in srgb, var(--status-warning) 22%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yunxiao-fix-attention {
+    animation: none;
+    background-color: color-mix(in srgb, var(--status-warning) 16%, transparent);
   }
 }
 

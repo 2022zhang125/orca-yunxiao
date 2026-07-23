@@ -176,6 +176,46 @@ export const getIntegrationsPaneSearchEntries = createLocalizedCatalog(() => [
   },
   {
     title: translate(
+      'auto.components.settings.integrations.search.yunxiao_title',
+      '云效 Integration'
+    ),
+    description: translate(
+      'auto.components.settings.integrations.search.yunxiao_description',
+      'Connect a 云效 organization or update its personal access token.'
+    ),
+    keywords: [
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.yunxiao_keyword',
+        'yunxiao'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.yunxiao_keyword_cn',
+        '云效'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.yunxiao_keyword_aliyun',
+        'aliyun devops'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.c450244ad7',
+        'integration'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.20540996ef',
+        'credentials'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.3c3d3d8ffa',
+        'connect'
+      ),
+      ...translateSearchKeyword(
+        'auto.components.settings.integrations.search.a626990bd2',
+        'disconnect'
+      )
+    ]
+  },
+  {
+    title: translate(
       'auto.components.settings.integrations.search.b027b4b318',
       'Linear Integration'
     ),

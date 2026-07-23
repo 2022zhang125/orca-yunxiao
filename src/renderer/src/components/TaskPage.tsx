@@ -87,6 +87,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import TaskProjectSourceCombobox from '@/components/task-project-source-combobox'
 import { JiraConnectDialog } from '@/components/jira-connect-dialog'
+import { YunxiaoConnectDialog } from '@/components/yunxiao-connect-dialog'
 import { LinearApiKeyDialog } from '@/components/linear-api-key-dialog'
 import { LinearScopeSelector } from '@/components/linear-scope-selector'
 import RepoBadgeLabel from '@/components/repo/RepoBadgeLabel'
@@ -140,6 +141,7 @@ import {
 import { createGitHubWorkItemWorkspaceInBackground } from '@/lib/github-work-item-background-create'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { useRepoAssigneesBySlug } from '@/hooks/useGitHubSlugMetadata'
+import { useDeferredLoadingIndicator } from '@/hooks/use-deferred-loading-indicator'
 import GitHubItemDialog, { type ItemDialogTab } from '@/components/GitHubItemDialog'
 import PullRequestPage from '@/components/PullRequestPage'
 import GitLabItemDialog from '@/components/GitLabItemDialog'
@@ -165,6 +167,11 @@ import {
   loadTaskPageJiraProjectStatusOrder
 } from '@/components/task-page-jira-status-order'
 import { JiraIcon } from '@/components/icons/JiraIcon'
+import { YunxiaoIcon } from '@/components/icons/YunxiaoIcon'
+import { TaskPageYunxiaoWorkItemList } from '@/components/task-page-yunxiao-work-item-list'
+import type { YunxiaoDefectAttachment } from '@/components/task-page-yunxiao-defect-report'
+import { indexFixWorktreesByWorkItem } from '@/components/task-page-yunxiao-fix-progress'
+import { yunxiaoGetWorkItemFile } from '@/runtime/runtime-yunxiao-client'
 import { cn } from '@/lib/utils'
 import {
   getLinkedWorkItemSuggestedName,
@@ -180,6 +187,11 @@ import {
   writeLinearBoardIssueDragData
 } from '@/lib/linear-board-drag-payload'
 import { isGitRepoKind } from '../../../shared/repo-kind'
+import { runBackgroundWorktreeCreation } from '@/lib/worktree-creation-flow'
+import {
+  buildYunxiaoFixWorkspaceRequest,
+  YUNXIAO_FIX_AGENT
+} from '@/lib/yunxiao-fix-workspace-request'
 import { getRepoExecutionHostId } from '../../../shared/execution-host'
 import { projectHostSetupProjectionFromRepos } from '../../../shared/project-host-setup-projection'
 import { TASK_SOURCE_CONTEXT_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
@@ -290,6 +302,8 @@ import type {
   JiraProject,
   JiraProjectStatusOrder,
   JiraPriority,
+  YunxiaoWorkItem,
+  YunxiaoWorkItemFile,
   LinearIssue,
   LinearProjectDetail,
   LinearProjectSummary,
@@ -351,6 +365,7 @@ import {
   getGitLabIssueFilters,
   getGitLabMRFilters,
   getJiraPresets,
+  getYunxiaoPresets,
   getLinearDisplayProperties,
   getLinearGroupOptions,
   getLinearModeOptions,
@@ -362,6 +377,7 @@ import {
   type GitLabIssueFilter,
   type GitLabTaskFilter,
   type JiraPresetId,
+  type YunxiaoPresetId,
   LinearIcon,
   type LinearDisplayProperty,
   type LinearGroupBy,
@@ -383,6 +399,7 @@ function isGitLabIssueFilter(
 const TASK_SEARCH_DEBOUNCE_MS = 300
 const LINEAR_ITEM_LIMIT = 36
 const JIRA_ITEM_LIMIT = 50
+const YUNXIAO_ITEM_LIMIT = 50
 const PR_CHECKS_EAGER_PREFETCH_LIMIT = 20
 
 const GITHUB_TASK_GRID_CLASS =
@@ -418,6 +435,23 @@ function getJiraIssueWorkspaceSeed(issue: JiraIssue): string {
       title: `${issue.key} ${issue.title}`,
       jiraIdentifier: issue.key
     })?.seedName ?? getLinkedWorkItemSuggestedName(issue)
+  )
+}
+
+/** Providers whose task source is an account/organization rather than a repo. */
+function isAccountBackedTaskSource(provider: TaskProvider): boolean {
+  return provider === 'linear' || provider === 'jira' || provider === 'yunxiao'
+}
+
+function getYunxiaoWorkItemWorkspaceSeed(workItem: YunxiaoWorkItem): string {
+  return (
+    getLinkedWorkItemWorkspaceName({
+      type: 'issue',
+      provider: 'yunxiao',
+      number: 0,
+      title: `${workItem.serialNumber} ${workItem.title}`,
+      yunxiaoIdentifier: workItem.serialNumber
+    })?.seedName ?? getLinkedWorkItemSuggestedName(workItem)
   )
 }
 
@@ -3130,6 +3164,26 @@ export default function TaskPage(): React.JSX.Element {
   const searchJiraIssues = useAppStore((s) => s.searchJiraIssues)
   const listJiraIssues = useAppStore((s) => s.listJiraIssues)
   const checkJiraConnection = useAppStore((s) => s.checkJiraConnection)
+  const yunxiaoStatus = useAppStore((s) => s.yunxiaoStatus)
+  const yunxiaoStatusChecked = useAppStore((s) => s.yunxiaoStatusChecked)
+  const yunxiaoStatusContextKey = useAppStore((s) => s.yunxiaoStatusContextKey)
+  const searchYunxiaoWorkItems = useAppStore((s) => s.searchYunxiaoWorkItems)
+  const listYunxiaoWorkItems = useAppStore((s) => s.listYunxiaoWorkItems)
+  const fetchYunxiaoWorkItem = useAppStore((s) => s.fetchYunxiaoWorkItem)
+  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
+  // Serial -> workspace already fixing it; drives the row's running state and
+  // its 查看 jump, and survives restarts via linkedYunxiaoWorkItem.
+  const yunxiaoFixWorktreeIdBySerial = useMemo(() => {
+    const bySerial = new Map<string, string>()
+    for (const [serial, worktree] of indexFixWorktreesByWorkItem(
+      Object.values(worktreesByRepo).flat()
+    )) {
+      bySerial.set(serial, worktree.id)
+    }
+    return bySerial
+  }, [worktreesByRepo])
+  const invalidateYunxiaoWorkItemLists = useAppStore((s) => s.invalidateYunxiaoWorkItemLists)
+  const checkYunxiaoConnection = useAppStore((s) => s.checkYunxiaoConnection)
   const providerRuntimeContextKey = getProviderRuntimeContextKey(settings)
   const providerRuntimeContextKeyRef = useRef(providerRuntimeContextKey)
   providerRuntimeContextKeyRef.current = providerRuntimeContextKey
@@ -3140,6 +3194,11 @@ export default function TaskPage(): React.JSX.Element {
   const jiraStatusReady = jiraStatusCurrent && jiraStatusChecked
   const linearConnected = linearStatusCurrent && linearStatus.connected
   const jiraConnected = jiraStatusCurrent && jiraStatus.connected
+  const yunxiaoStatusCurrent = yunxiaoStatusContextKey === providerRuntimeContextKey
+  const yunxiaoStatusReady = yunxiaoStatusCurrent && yunxiaoStatusChecked
+  const yunxiaoConnected = yunxiaoStatusCurrent && yunxiaoStatus.connected
+  const selectedYunxiaoAccountId =
+    yunxiaoStatus.selectedAccountId ?? yunxiaoStatus.activeAccountId ?? null
   const submitShortcutLabel = getScreenSubmitShortcutLabel()
   const eligibleRepos = useMemo(() => repos.filter((repo) => isGitRepoKind(repo)), [repos])
 
@@ -3250,6 +3309,7 @@ export default function TaskPage(): React.JSX.Element {
   const githubModeButtons = getGitHubModeButtons()
   const linearModeOptions = getLinearModeOptions()
   const jiraPresets = getJiraPresets()
+  const yunxiaoPresets = getYunxiaoPresets()
   const gitLabIssueFilters = getGitLabIssueFilters()
   const gitLabMRFilters = getGitLabMRFilters()
   const linearViewOptions = getLinearViewOptions()
@@ -3515,8 +3575,33 @@ export default function TaskPage(): React.JSX.Element {
   const jiraTaskSourceScopeKey = jiraTaskSourceContext
     ? getTaskSourceCacheScope(jiraTaskSourceContext)
     : providerRuntimeContextKey
+  const yunxiaoTaskSourceContext = useMemo(
+    () =>
+      normalizeTaskSourceContext({
+        provider: 'yunxiao',
+        projectId: fallbackTaskSourceProjectId,
+        hostId: accountBackedTaskSourceHostId,
+        providerIdentity: {
+          provider: 'yunxiao',
+          accountId:
+            selectedYunxiaoAccountId && selectedYunxiaoAccountId !== 'all'
+              ? selectedYunxiaoAccountId
+              : null,
+          organizationId: yunxiaoStatus.viewer?.organizationId ?? null,
+          organizationName: yunxiaoStatus.viewer?.organizationName ?? null
+        },
+        accountLabel: yunxiaoStatus.viewer?.organizationName ?? null
+      }),
+    [
+      accountBackedTaskSourceHostId,
+      fallbackTaskSourceProjectId,
+      selectedYunxiaoAccountId,
+      yunxiaoStatus.viewer?.organizationId,
+      yunxiaoStatus.viewer?.organizationName
+    ]
+  )
   const accountBackedTaskSourceHostAvailability = useMemo<TaskSourceHostAvailability[]>(() => {
-    if (taskSource !== 'linear' && taskSource !== 'jira') {
+    if (taskSource !== 'linear' && taskSource !== 'jira' && taskSource !== 'yunxiao') {
       return []
     }
     const host = hostRegistryById.get(accountBackedTaskSourceHostId)
@@ -3589,6 +3674,13 @@ export default function TaskPage(): React.JSX.Element {
           sourceCount: 1,
           hostLabelById,
           hostAvailability: accountAvailability
+        }) ?? undefined,
+      yunxiao:
+        getTaskSourceAvailabilityNotice({
+          providerLabel: labelFor('yunxiao'),
+          sourceCount: 1,
+          hostLabelById,
+          hostAvailability: accountAvailability
         }) ?? undefined
     }
   }, [
@@ -3609,19 +3701,20 @@ export default function TaskPage(): React.JSX.Element {
       provider: taskSource,
       providerLabel,
       repoContexts: taskSourceRepoContexts,
-      hostAvailability:
-        taskSource === 'linear' || taskSource === 'jira'
-          ? accountBackedTaskSourceHostAvailability
-          : taskSourceHostAvailability,
+      hostAvailability: isAccountBackedTaskSource(taskSource)
+        ? accountBackedTaskSourceHostAvailability
+        : taskSourceHostAvailability,
       accountHostId: accountBackedTaskSourceHostId,
       hostLabelById,
       selectedRepoCount: selectedRepos.length,
       linearWorkspaceName:
         selectedLinearWorkspace?.organizationName ?? selectedLinearWorkspace?.id ?? null,
-      jiraSiteName: selectedJiraSite?.displayName ?? selectedJiraSite?.siteUrl ?? null
+      jiraSiteName: selectedJiraSite?.displayName ?? selectedJiraSite?.siteUrl ?? null,
+      yunxiaoOrganizationName: yunxiaoStatus.viewer?.organizationName ?? null
     })
   }, [
     selectedJiraSite,
+    yunxiaoStatus.viewer?.organizationName,
     selectedLinearWorkspace,
     selectedRepos.length,
     sourceOptions,
@@ -3637,14 +3730,12 @@ export default function TaskPage(): React.JSX.Element {
       sourceOptions.find((source) => source.id === taskSource)?.label ?? taskSource
     return getTaskSourceAvailabilityNotice({
       providerLabel,
-      sourceCount:
-        taskSource === 'linear' || taskSource === 'jira'
-          ? 1
-          : Math.max(1, taskSourceRepoContexts.length),
-      hostAvailability:
-        taskSource === 'linear' || taskSource === 'jira'
-          ? accountBackedTaskSourceHostAvailability
-          : taskSourceHostAvailability,
+      sourceCount: isAccountBackedTaskSource(taskSource)
+        ? 1
+        : Math.max(1, taskSourceRepoContexts.length),
+      hostAvailability: isAccountBackedTaskSource(taskSource)
+        ? accountBackedTaskSourceHostAvailability
+        : taskSourceHostAvailability,
       hostLabelById
     })
   }, [
@@ -4518,6 +4609,17 @@ export default function TaskPage(): React.JSX.Element {
     },
     [clearSelectedLinearIssue, setTaskResumeState]
   )
+
+  // 云效 tab state
+  const [yunxiaoWorkItems, setYunxiaoWorkItems] = useState<YunxiaoWorkItem[]>([])
+  const [yunxiaoLoading, setYunxiaoLoading] = useState(false)
+  const [yunxiaoError, setYunxiaoError] = useState<string | null>(null)
+  const [yunxiaoSearchInput, setYunxiaoSearchInput] = useState('')
+  const [appliedYunxiaoSearch, setAppliedYunxiaoSearch] = useState('')
+  const [activeYunxiaoPreset, setActiveYunxiaoPreset] = useState<YunxiaoPresetId>('assigned')
+  const [yunxiaoRefreshNonce, setYunxiaoRefreshNonce] = useState(0)
+  const [yunxiaoConnectOpen, setYunxiaoConnectOpen] = useState(false)
+  const yunxiaoLoadingVisible = useDeferredLoadingIndicator(yunxiaoLoading)
 
   // Jira tab state
   const [jiraIssues, setJiraIssues] = useState<JiraIssue[]>([])
@@ -7168,12 +7270,18 @@ export default function TaskPage(): React.JSX.Element {
     if (!jiraStatusReady) {
       void checkJiraConnection()
     }
+    if (!yunxiaoStatusReady) {
+      void checkYunxiaoConnection()
+    }
   }, [
     checkJiraConnection,
     checkLinearConnection,
+    checkYunxiaoConnection,
     expectedPreflightContextKey,
     jiraStatusContextKey,
     jiraStatusReady,
+    yunxiaoStatusContextKey,
+    yunxiaoStatusReady,
     linearStatusContextKey,
     linearStatusReady,
     providerRuntimeContextKey,
@@ -7681,6 +7789,73 @@ export default function TaskPage(): React.JSX.Element {
       return
     }
     const timeout = window.setTimeout(() => {
+      setAppliedYunxiaoSearch(yunxiaoSearchInput)
+    }, TASK_SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timeout)
+  }, [taskResumeApplied, yunxiaoSearchInput])
+
+  useEffect(() => {
+    if (!taskResumeApplied || taskSource !== 'yunxiao' || !yunxiaoConnected) {
+      return
+    }
+
+    let cancelled = false
+    setYunxiaoLoading(true)
+    setYunxiaoError(null)
+
+    const trimmed = appliedYunxiaoSearch.trim()
+    const request =
+      trimmed.length > 0
+        ? searchYunxiaoWorkItems(trimmed, YUNXIAO_ITEM_LIMIT, {
+            sourceContext: yunxiaoTaskSourceContext
+          })
+        : listYunxiaoWorkItems(activeYunxiaoPreset, YUNXIAO_ITEM_LIMIT, {
+            sourceContext: yunxiaoTaskSourceContext
+          })
+
+    void request
+      .then((workItems) => {
+        if (cancelled) {
+          return
+        }
+        setYunxiaoWorkItems(workItems)
+        setYunxiaoLoading(false)
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setYunxiaoWorkItems([])
+        setYunxiaoError(
+          error instanceof Error
+            ? error.message
+            : translate(
+                'auto.components.TaskPage.yunxiao_load_failed',
+                'Failed to load 云效 work items.'
+              )
+        )
+        setYunxiaoLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeYunxiaoPreset,
+    appliedYunxiaoSearch,
+    taskResumeApplied,
+    taskSource,
+    yunxiaoConnected,
+    yunxiaoRefreshNonce,
+    yunxiaoTaskSourceContext
+  ])
+
+  useEffect(() => {
+    if (!taskResumeApplied) {
+      return
+    }
+    const timeout = window.setTimeout(() => {
       setAppliedJiraSearch(jiraSearchInput)
     }, TASK_SEARCH_DEBOUNCE_MS)
     return () => window.clearTimeout(timeout)
@@ -7922,11 +8097,165 @@ export default function TaskPage(): React.JSX.Element {
     [openComposerForJiraItem]
   )
 
+  const openYunxiaoComposer = useCallback(
+    (workItem: YunxiaoWorkItem): void => {
+      const linkedWorkItem: LinkedWorkItemSummary = {
+        type: 'issue',
+        provider: 'yunxiao',
+        number: 0,
+        title: `${workItem.serialNumber} ${workItem.title}`,
+        url: workItem.url,
+        yunxiaoIdentifier: workItem.serialNumber
+      }
+      openModal('new-workspace-composer', {
+        linkedWorkItem,
+        taskSourceContext: yunxiaoTaskSourceContext,
+        prefilledName: getYunxiaoWorkItemWorkspaceSeed(workItem),
+        telemetrySource: 'sidebar'
+      })
+    },
+    [openModal, yunxiaoTaskSourceContext]
+  )
+
+  /**
+   * One-click fix: create a workspace in the background whose first Claude
+   * session runs `/flow-bug #<serial>`. Falls back to the composer whenever the
+   * target repo is ambiguous, so the user picks rather than Orca guessing.
+   */
+  const handleFixYunxiaoItem = useCallback(
+    (workItem: YunxiaoWorkItem): void => {
+      const store = useAppStore.getState()
+      store.recordFeatureInteraction('yunxiao-tasks')
+
+      const activeRepo = store.activeRepoId
+        ? (store.repos.find((repo) => repo.id === store.activeRepoId) ?? null)
+        : null
+      const gitRepos = store.repos.filter((repo) => isGitRepoKind(repo))
+      const repo =
+        activeRepo && isGitRepoKind(activeRepo)
+          ? activeRepo
+          : gitRepos.length === 1
+            ? gitRepos[0]
+            : null
+      if (!repo) {
+        openYunxiaoComposer(workItem)
+        return
+      }
+      if (store.detectedAgentIds && !store.detectedAgentIds.includes(YUNXIAO_FIX_AGENT)) {
+        toast.error(
+          translate(
+            'auto.components.TaskPage.yunxiao_fix_agent_missing',
+            'Claude is not available on this host, so the fix cannot start automatically.'
+          )
+        )
+        return
+      }
+      runBackgroundWorktreeCreation(
+        buildYunxiaoFixWorkspaceRequest({
+          workItem,
+          repo,
+          store,
+          taskSourceContext: yunxiaoTaskSourceContext
+        })
+      )
+    },
+    [openYunxiaoComposer, yunxiaoTaskSourceContext]
+  )
+
+  /**
+   * Batch fix: one background workspace per ticked defect, each on its own
+   * `/flow-bug #<serial>`. Unlike the single fix there is no composer fallback —
+   * opening N composers is not a batch — so an ambiguous repo is a hard stop.
+   */
+  const handleBatchFixYunxiaoItems = useCallback(
+    (batchWorkItems: YunxiaoWorkItem[]): void => {
+      const store = useAppStore.getState()
+      store.recordFeatureInteraction('yunxiao-tasks')
+
+      const activeRepo = store.activeRepoId
+        ? (store.repos.find((repo) => repo.id === store.activeRepoId) ?? null)
+        : null
+      const gitRepos = store.repos.filter((repo) => isGitRepoKind(repo))
+      const repo =
+        activeRepo && isGitRepoKind(activeRepo)
+          ? activeRepo
+          : gitRepos.length === 1
+            ? gitRepos[0]
+            : null
+      if (!repo) {
+        toast.error(
+          translate(
+            'auto.components.TaskPage.yunxiao_batch_fix_no_repo',
+            'Select an active repo first so the fixes know where to run.'
+          )
+        )
+        return
+      }
+      if (store.detectedAgentIds && !store.detectedAgentIds.includes(YUNXIAO_FIX_AGENT)) {
+        toast.error(
+          translate(
+            'auto.components.TaskPage.yunxiao_fix_agent_missing',
+            'Claude is not available on this host, so the fix cannot start automatically.'
+          )
+        )
+        return
+      }
+      for (const workItem of batchWorkItems) {
+        runBackgroundWorktreeCreation(
+          buildYunxiaoFixWorkspaceRequest({
+            workItem,
+            repo,
+            store,
+            taskSourceContext: yunxiaoTaskSourceContext
+          })
+        )
+      }
+    },
+    [yunxiaoTaskSourceContext]
+  )
+
+  const handleViewYunxiaoFixWorkspace = useCallback((worktreeId: string): void => {
+    activateAndRevealWorktree(worktreeId)
+  }, [])
+
+  // The URL 云效 embeds in a description is a session-guarded proxy, so it is
+  // resolved through the file endpoint into a pre-signed link the viewer can
+  // render directly. That signature expires within minutes, hence resolving on
+  // open rather than when the row expands.
+  const resolveYunxiaoAttachment = useCallback(
+    async (
+      workItem: YunxiaoWorkItem,
+      attachment: YunxiaoDefectAttachment
+    ): Promise<YunxiaoWorkItemFile | null> => {
+      if (!attachment.fileId) {
+        return { id: attachment.src, name: attachment.name, url: attachment.src }
+      }
+      return yunxiaoGetWorkItemFile(
+        yunxiaoTaskSourceContext,
+        workItem.id,
+        attachment.fileId,
+        workItem.accountId ?? null
+      )
+    },
+    [yunxiaoTaskSourceContext]
+  )
+
+  // The list payload carries no description, so an expanded row reads the
+  // single-item endpoint; the store caches and de-dupes the fetch.
+  const loadYunxiaoWorkItemDetail = useCallback(
+    (workItem: YunxiaoWorkItem): Promise<YunxiaoWorkItem | null> =>
+      fetchYunxiaoWorkItem(workItem.id, workItem.accountId ?? null, {
+        sourceContext: yunxiaoTaskSourceContext
+      }),
+    [fetchYunxiaoWorkItem, yunxiaoTaskSourceContext]
+  )
+
   const taskPageListChromeHidden = shouldHideTaskPageListChrome({
     taskSource,
     hasGitHubDetail: Boolean(dialogWorkItem),
     hasGitLabDetail: Boolean(gitlabDialogItem),
     hasJiraDetail: Boolean(selectedJiraIssue),
+    hasYunxiaoDetail: false,
     hasLinearIssueDetail: Boolean(selectedLinearIssue),
     hasLinearProjectContext: Boolean(selectedLinearProject),
     hasLinearViewContext: Boolean(selectedLinearCustomView)
@@ -8847,6 +9176,118 @@ export default function TaskPage(): React.JSX.Element {
                               setAppliedJiraSearch('')
                               setTaskResumeState({ jiraQuery: '' })
                               setJiraRefreshNonce((n) => n + 1)
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                          >
+                            <X className="size-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : taskSource === 'yunxiao' && yunxiaoConnected ? (
+                  <div className="rounded-md rounded-b-none border border-border/50 bg-muted/50 px-3 pt-2 pb-0 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        {yunxiaoPresets.map((preset) => {
+                          const active = !yunxiaoSearchInput && activeYunxiaoPreset === preset.id
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                setYunxiaoSearchInput('')
+                                setAppliedYunxiaoSearch('')
+                                setActiveYunxiaoPreset(preset.id)
+                                setYunxiaoRefreshNonce((n) => n + 1)
+                              }}
+                              className={cn(
+                                'rounded-md border px-2 py-1 text-xs transition',
+                                active
+                                  ? 'border-border/50 bg-foreground/90 text-background backdrop-blur-md'
+                                  : 'border-border/50 bg-transparent text-foreground hover:bg-muted/50'
+                              )}
+                            >
+                              {preset.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                invalidateYunxiaoWorkItemLists({
+                                  sourceContext: yunxiaoTaskSourceContext
+                                })
+                                setYunxiaoRefreshNonce((n) => n + 1)
+                              }}
+                              disabled={yunxiaoLoading}
+                              aria-label={translate(
+                                'auto.components.TaskPage.yunxiao_refresh',
+                                'Refresh 云效 work items'
+                              )}
+                              className="border-border/50 bg-transparent hover:bg-muted/50 backdrop-blur-md supports-[backdrop-filter]:bg-transparent"
+                            >
+                              {yunxiaoLoading ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="size-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" sideOffset={6}>
+                            {translate(
+                              'auto.components.TaskPage.yunxiao_refresh',
+                              'Refresh 云效 work items'
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="relative min-w-[320px] flex-1">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={yunxiaoSearchInput}
+                          onChange={(e) => setYunxiaoSearchInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              if (
+                                shouldSuppressEnterSubmit(
+                                  { isComposing: e.nativeEvent.isComposing, shiftKey: e.shiftKey },
+                                  false
+                                )
+                              ) {
+                                return
+                              }
+                              e.preventDefault()
+                              const trimmed = yunxiaoSearchInput.trim()
+                              setYunxiaoSearchInput(trimmed)
+                              setAppliedYunxiaoSearch(trimmed)
+                              setYunxiaoRefreshNonce((n) => n + 1)
+                            }
+                          }}
+                          placeholder={translate(
+                            'auto.components.TaskPage.yunxiao_search_placeholder',
+                            'Search 云效 work items by title'
+                          )}
+                          className="h-8 rounded-md border-border/50 bg-background pl-8 pr-8 text-xs"
+                        />
+                        {yunxiaoSearchInput ? (
+                          <button
+                            type="button"
+                            aria-label={translate(
+                              'auto.components.TaskPage.b797bdd7c3',
+                              'Clear search'
+                            )}
+                            onClick={() => {
+                              setYunxiaoSearchInput('')
+                              setAppliedYunxiaoSearch('')
+                              setYunxiaoRefreshNonce((n) => n + 1)
                             }}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
                           >
@@ -9940,6 +10381,127 @@ export default function TaskPage(): React.JSX.Element {
                   onClose={closeTaskDetailPage}
                   sourceContext={jiraDetailSourceContext}
                 />
+              </div>
+            )
+          ) : taskSource === 'yunxiao' ? (
+            !yunxiaoStatusReady ? (
+              <div className="mt-4 flex items-center justify-center py-14">
+                <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : !yunxiaoConnected ? (
+              <div className="mt-4 flex flex-col items-center justify-center rounded-md border border-border/50 bg-muted/50 px-6 py-14 text-center shadow-sm">
+                <YunxiaoIcon className="mb-4 size-8 text-muted-foreground/60" />
+                <p className="text-base font-medium text-foreground">
+                  {translate(
+                    'auto.components.TaskPage.yunxiao_connect_title',
+                    'Connect your 云效 organization'
+                  )}
+                </p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                  {translate(
+                    'auto.components.TaskPage.yunxiao_connect_body',
+                    'Browse and start work from 云效 work items directly from here.'
+                  )}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                  <Button onClick={() => setYunxiaoConnectOpen(true)}>
+                    {translate('auto.components.TaskPage.yunxiao_connect_cta', 'Connect 云效')}
+                  </Button>
+                  <Button variant="outline" onClick={() => hideTaskSource('yunxiao', '云效')}>
+                    {translate('auto.components.TaskPage.yunxiao_hide_cta', 'Hide 云效')}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 max-h-full flex-col overflow-hidden rounded-md rounded-t-none border border-t-0 border-border/50 bg-background shadow-sm">
+                <div className="relative flex h-10 flex-none items-center justify-between gap-3 border-b border-border/50 bg-muted/35 px-3">
+                  <div className="min-w-0 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {translate('auto.components.TaskPage.yunxiao_list_heading', '云效 work items')}
+                  </div>
+                  <div className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                    {yunxiaoWorkItems.length}{' '}
+                    {translate('auto.components.TaskPage.b7bae28b6a', 'shown')}
+                  </div>
+                  {yunxiaoLoadingVisible ? (
+                    <div
+                      className="list-refresh-indicator pointer-events-none absolute inset-x-0 bottom-0 h-px"
+                      aria-hidden
+                    />
+                  ) : null}
+                </div>
+
+                <div
+                  className={cn(
+                    'min-h-0 flex-1 overflow-y-auto scrollbar-sleek transition-opacity duration-150',
+                    // Keep the stale rows in place (scroll position survives) but
+                    // mark them as superseded while the next preset loads.
+                    yunxiaoLoadingVisible &&
+                      yunxiaoWorkItems.length > 0 &&
+                      'pointer-events-none opacity-45'
+                  )}
+                  style={{ scrollbarGutter: 'stable' }}
+                  aria-busy={yunxiaoLoading || undefined}
+                >
+                  {yunxiaoStatus.credentialError ? (
+                    <div className="border-b border-border px-4 py-4 text-sm text-destructive">
+                      {yunxiaoStatus.credentialError}
+                    </div>
+                  ) : null}
+                  {!yunxiaoStatus.credentialError && yunxiaoError ? (
+                    <div className="border-b border-border px-4 py-4 text-sm text-destructive">
+                      {yunxiaoError}
+                    </div>
+                  ) : null}
+
+                  {yunxiaoLoadingVisible && yunxiaoWorkItems.length === 0 ? (
+                    <div className="divide-y divide-border/50">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="px-3 py-3">
+                          <div className="h-4 w-4/5 animate-pulse rounded bg-muted/70" />
+                          <div className="mt-2 h-3 w-3/5 animate-pulse rounded bg-muted/60" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {!yunxiaoLoading &&
+                  yunxiaoWorkItems.length === 0 &&
+                  !yunxiaoError &&
+                  !yunxiaoStatus.credentialError ? (
+                    <div className="px-4 py-10 text-center">
+                      <p className="text-sm font-medium text-foreground">
+                        {translate(
+                          'auto.components.TaskPage.yunxiao_empty_title',
+                          'No 云效 work items found'
+                        )}
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {yunxiaoSearchInput
+                          ? translate(
+                              'auto.components.TaskPage.yunxiao_empty_search',
+                              'Try a different title search.'
+                            )
+                          : translate(
+                              'auto.components.TaskPage.94d900518d',
+                              'No issues match the selected preset.'
+                            )}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <TaskPageYunxiaoWorkItemList
+                    formatUpdatedAt={formatRelativeTime}
+                    workItems={yunxiaoWorkItems}
+                    onFixWorkItem={handleFixYunxiaoItem}
+                    selectedWorkItem={null}
+                    showOrganizationContext={selectedYunxiaoAccountId === 'all'}
+                    loadWorkItemDetail={loadYunxiaoWorkItemDetail}
+                    resolveAttachment={resolveYunxiaoAttachment}
+                    fixWorktreeIdBySerial={yunxiaoFixWorktreeIdBySerial}
+                    onBatchFixWorkItems={handleBatchFixYunxiaoItems}
+                    onViewFixWorkspace={handleViewYunxiaoFixWorkspace}
+                  />
+                </div>
               </div>
             )
           ) : taskSource === 'linear' && selectedLinearIssue ? (
@@ -12423,6 +12985,11 @@ export default function TaskPage(): React.JSX.Element {
       />
 
       <JiraConnectDialog open={jiraConnectOpen} onOpenChange={setJiraConnectOpen} />
+      <YunxiaoConnectDialog
+        open={yunxiaoConnectOpen}
+        onOpenChange={setYunxiaoConnectOpen}
+        onConnected={() => setYunxiaoRefreshNonce((n) => n + 1)}
+      />
     </div>
   )
 }

@@ -1785,7 +1785,53 @@
         "jiraToggleSortDirection": "按{{value0}}排序",
         "75a38d7df8": "GitHub data is temporarily unavailable. Its API may be down, rate-limited, or unreachable. Please try again shortly.",
         "noGithubSourceDetected": "No GitHub source detected for",
-        "noGithubSourceDetectedHint": "it may have no GitHub remote, or the source could not be resolved."
+        "noGithubSourceDetectedHint": "it may have no GitHub remote, or the source could not be resolved.",
+        "yunxiao_label": "云效",
+        "yunxiao_created": "我创建的",
+        "yunxiao_connect_title": "连接你的云效组织",
+        "yunxiao_connect_body": "在这里直接浏览云效工作项并开始工作。",
+        "yunxiao_connect_cta": "连接云效",
+        "yunxiao_hide_cta": "隐藏云效",
+        "yunxiao_list_heading": "云效工作项",
+        "yunxiao_empty_title": "未找到云效工作项",
+        "yunxiao_empty_search": "换一个标题关键词试试。",
+        "yunxiao_load_failed": "加载云效工作项失败。",
+        "yunxiao_refresh": "刷新云效工作项",
+        "yunxiao_search_placeholder": "按标题搜索云效工作项",
+        "yunxiao_open_aria": "在云效中打开 {{value0}}",
+        "yunxiao_open_tooltip": "在云效中打开",
+        "yunxiao_sprint_label": "迭代",
+        "yunxiao_open_detail_aria": "打开 {{value0}}",
+        "yunxiao_fix_tooltip": "一键修复",
+        "yunxiao_fix_agent_missing": "当前主机上没有可用的 Claude，无法自动开始修复。",
+        "yunxiao_detail_expand": "展开详情",
+        "yunxiao_detail_collapse": "收起详情",
+        "yunxiao_detail_loading": "正在加载详情…",
+        "yunxiao_detail_failed": "加载失败，可在云效中查看完整内容。",
+        "yunxiao_detail_empty": "暂无描述。",
+        "yunxiao_detail_project": "项目",
+        "yunxiao_detail_reporter": "创建人",
+        "yunxiao_detail_created": "创建时间",
+        "yunxiao_detail_expected": "预期结果",
+        "yunxiao_detail_actual": "实际结果",
+        "yunxiao_detail_steps": "复现步骤",
+        "yunxiao_detail_environment": "环境",
+        "yunxiao_detail_account": "账号",
+        "yunxiao_detail_scope": "影响范围",
+        "yunxiao_detail_api": "接口名称",
+        "yunxiao_detail_attachment": "附件 {{value0}}",
+        "yunxiao_attachment_loading": "正在打开附件…",
+        "yunxiao_attachment_failed": "打开附件失败。文件可能已被删除，或当前云效账号没有访问权限。",
+        "yunxiao_attachment_no_preview": ".{{value0}} 文件无法预览。",
+        "yunxiao_attachment_download": "下载",
+        "yunxiao_attachment_open_external": "在浏览器中打开",
+        "yunxiao_attachment_dialog_description": "附件预览",
+        "yunxiao_select_aria": "选择 {{value0}} 加入批量修复",
+        "yunxiao_batch_selected": "已选 {{value0}} 项",
+        "yunxiao_batch_fix_button": "修复所选",
+        "yunxiao_batch_clear": "清除",
+        "yunxiao_batch_fix_no_repo": "请先选择一个活动仓库，修复才知道在哪里运行。",
+        "yunxiao_view_fix_tooltip": "查看修复"
       },
       "Terminal": {
         "73768427cf": "关闭",
@@ -4048,7 +4094,8 @@
           "196c1b5362": "打开 GitLab 任务",
           "0ccba862b8": "打开 GitHub 任务",
           "fee535205b": "任务",
-          "d599269755": "从侧边栏隐藏"
+          "d599269755": "从侧边栏隐藏",
+          "open_yunxiao_tasks": "打开云效任务"
         },
         "SidebarRepositoryFilterSection": {
           "d3a9c4cea1": "清除",
@@ -6748,7 +6795,9 @@
           "dd67a1b6e1": "在任务源选择器和侧边栏快捷方式中显示 GitLab。",
           "7c5d7fdc20": "GitLab",
           "1db47236cd": "在任务源选择器和侧边栏快捷方式中显示 GitHub。",
-          "e14063e727": "GitHub"
+          "e14063e727": "GitHub",
+          "yunxiao_label": "云效",
+          "yunxiao_description": "在任务来源选择器和侧边栏快捷方式中显示云效。"
         },
         "TerminalAppearanceSection": {
           "a14a427ae4": "窗格分隔线的厚度。",
@@ -7935,7 +7984,12 @@
             "41ccade05c": "gh",
             "b79c21bd42": "GitHub",
             "7166b9090c": "通过 gh CLI 进行 GitHub 身份验证。",
-            "f16e41cc72": "GitHub 集成"
+            "f16e41cc72": "GitHub 集成",
+            "yunxiao_title": "云效集成",
+            "yunxiao_description": "连接云效组织或更新其个人访问令牌。",
+            "yunxiao_keyword": "yunxiao",
+            "yunxiao_keyword_cn": "云效",
+            "yunxiao_keyword_aliyun": "阿里云 devops"
           }
         },
         "jira": {
@@ -8387,7 +8441,9 @@
             "cf0e3e0c2f": "提供者",
             "2ec54bee51": "任务",
             "765f0c544d": "选择要在“任务”页面和侧边栏快捷键中显示的任务提供商。",
-            "5b8e4aace5": "任务提供者"
+            "5b8e4aace5": "任务提供者",
+            "yunxiao": "yunxiao",
+            "yunxiao_cn": "云效"
           }
         },
         "terminal": {
@@ -9267,6 +9323,21 @@
           "title": "Editor Font Family",
           "description": "Font used by file editors and diff views. Leave empty to follow the terminal font.",
           "placeholder": "Same as terminal font"
+        },
+        "yunxiao": {
+          "integration": {
+            "card": {
+              "connect": "连接云效",
+              "add_org": "添加云效组织",
+              "checking": "正在检查云效访问权限,随后显示配置操作。",
+              "connected_count": "已连接 {{value0}} 个组织{{value1}}",
+              "idle": "浏览、创建云效工作项,并据此开始工作。",
+              "credentials_local": "使用个人访问令牌连接云效组织。凭据保存在本地,并在本地运行时存储支持时加密。",
+              "credentials_remote": "使用个人访问令牌连接云效组织。凭据会发送到所选的远程运行时,并在其支持的加密方式下保存。",
+              "token_scope_note": "每个已连接的云效组织在当前运行时中保存一个令牌。",
+              "stale_hint": "云效已在此运行时连接。若组织列表看起来过时,请重新检查。"
+            }
+          }
         }
       },
       "right": {
@@ -13432,6 +13503,24 @@
           },
           "undo": "撤销",
           "widthOption": "{{value0}} px"
+        }
+      },
+      "yunxiao": {
+        "connect": {
+          "dialog": {
+            "title": "连接云效组织",
+            "description": "使用云效组织 ID 和个人访问令牌浏览工作项。",
+            "organization_label": "组织 ID",
+            "token_label": "个人访问令牌",
+            "token_placeholder": "云效个人访问令牌",
+            "endpoint_label": "OpenAPI 接入点(可选)",
+            "token_hint": "在云效的「个人设置 › 个人访问令牌」中创建令牌,并从「组织管理 › 基本信息」复制组织 ID。",
+            "storage_local": "令牌保存在本地,并在本地运行时存储支持时加密。",
+            "storage_remote": "令牌会发送到所选的远程运行时,并在其支持的加密方式下保存。",
+            "cancel": "取消",
+            "verifying": "验证中…",
+            "connect": "连接"
+          }
         }
       }
     },

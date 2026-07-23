@@ -7,6 +7,7 @@ import {
 } from '../../../../shared/task-providers'
 import { cn } from '@/lib/utils'
 import { JiraIcon } from '@/components/icons/JiraIcon'
+import { YunxiaoIcon } from '@/components/icons/YunxiaoIcon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
 import { Label } from '../ui/label'
 import { SearchableSetting } from './SearchableSetting'
@@ -75,6 +76,19 @@ const TASK_PROVIDER_OPTIONS: readonly {
       )
     },
     Icon: ({ className }) => <JiraIcon className={className} />
+  },
+  {
+    id: 'yunxiao',
+    get label() {
+      return translate('auto.components.settings.TasksPane.yunxiao_label', '云效')
+    },
+    get description() {
+      return translate(
+        'auto.components.settings.TasksPane.yunxiao_description',
+        'Show 云效 in the Tasks source picker and sidebar shortcuts.'
+      )
+    },
+    Icon: ({ className }) => <YunxiaoIcon className={className} />
   }
 ]
 
@@ -123,6 +137,10 @@ export function TasksPane({ settings, updateSettings }: TasksPaneProps): React.J
             'linear',
             'jira',
             'atlassian',
+            'yunxiao',
+            '云效',
+            'aliyun',
+            'devops',
             'display',
             'hide'
           ]}

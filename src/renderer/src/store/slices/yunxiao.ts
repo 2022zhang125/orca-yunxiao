@@ -1,0 +1,309 @@
+import type { StateCreator } from 'zustand'
+import type { AppState } from '../types'
+import type {
+  YunxiaoAccountSelection,
+  YunxiaoConnectionStatus,
+  YunxiaoViewer,
+  YunxiaoWorkItem,
+  YunxiaoWorkItemFilter
+} from '../../../../shared/types'
+import type { CacheEntry } from './github'
+import { isIntegrationCredentialDecryptionError } from '../../../../shared/integration-credential-errors'
+import {
+  yunxiaoGetWorkItem,
+  yunxiaoListWorkItems,
+  yunxiaoSearchWorkItems
+} from '@/runtime/runtime-yunxiao-client'
+import { getTaskSourceCacheScope } from '../../../../shared/task-source-context'
+import { createYunxiaoConnectionActions } from './yunxiao-connection-actions'
+import {
+  canWriteYunxiaoReadResult,
+  currentYunxiaoMutationGeneration,
+  evictStaleEntries,
+  getSelectedAccountId,
+  getYunxiaoReadScope,
+  isFresh,
+  looksLikeYunxiaoAuthError,
+  scopedYunxiaoCacheKey,
+  shouldRefreshStatusAfterRead,
+  type InflightYunxiaoReadRequest,
+  type YunxiaoReadOptions
+} from './yunxiao-read-scope'
+
+const inflightWorkItemRequests = new Map<
+  string,
+  InflightYunxiaoReadRequest<YunxiaoWorkItem | null>
+>()
+const inflightListRequests = new Map<string, InflightYunxiaoReadRequest<YunxiaoWorkItem[]>>()
+
+function clearYunxiaoInflight(): void {
+  inflightWorkItemRequests.clear()
+  inflightListRequests.clear()
+}
+
+/** Without an explicit 云效 source context the caller means every scope. */
+function cacheKeyScopeMatcher(options: YunxiaoReadOptions | undefined): (key: string) => boolean {
+  const sourceScope =
+    options?.sourceContext?.provider === 'yunxiao'
+      ? getTaskSourceCacheScope(options.sourceContext)
+      : null
+  return (key) => sourceScope === null || key.startsWith(`${sourceScope}::`)
+}
+
+function reusableInflight<T>(
+  map: Map<string, InflightYunxiaoReadRequest<T>>,
+  cacheKey: string,
+  contextKey: string
+): Promise<T> | null {
+  const inflight = map.get(cacheKey)
+  return inflight &&
+    inflight.contextKey === contextKey &&
+    inflight.mutationGeneration === currentYunxiaoMutationGeneration()
+    ? inflight.promise
+    : null
+}
+
+// Credential/auth failures are surfaced through connection state, so they keep
+// the empty-list contract. Other failures (forbidden, network, 5xx) reject so
+// the Tasks panel can show a real error instead of a misleading "No items".
+function handleYunxiaoListError(error: unknown, operation: string): YunxiaoWorkItem[] {
+  console.warn(`[yunxiao] ${operation} failed:`, error)
+  if (isIntegrationCredentialDecryptionError(error) || looksLikeYunxiaoAuthError(error)) {
+    return []
+  }
+  throw error
+}
+
+export type YunxiaoSlice = {
+  yunxiaoStatus: YunxiaoConnectionStatus
+  yunxiaoStatusChecked: boolean
+  yunxiaoStatusContextKey: string | null
+  yunxiaoWorkItemCache: Record<string, CacheEntry<YunxiaoWorkItem>>
+  yunxiaoSearchCache: Record<string, CacheEntry<YunxiaoWorkItem[]>>
+
+  checkYunxiaoConnection: () => Promise<void>
+  connectYunxiao: (args: {
+    organizationId: string
+    accessToken: string
+    endpoint?: string
+  }) => Promise<{ ok: true; viewer: YunxiaoViewer } | { ok: false; error: string }>
+  testYunxiaoConnection: (
+    accountId?: string | null
+  ) => Promise<{ ok: true; viewer: YunxiaoViewer } | { ok: false; error: string }>
+  selectYunxiaoAccount: (accountId: YunxiaoAccountSelection) => Promise<void>
+  disconnectYunxiao: (accountId?: string | null) => Promise<void>
+  fetchYunxiaoWorkItem: (
+    workItemId: string,
+    accountId?: string | null,
+    options?: YunxiaoReadOptions
+  ) => Promise<YunxiaoWorkItem | null>
+  searchYunxiaoWorkItems: (
+    query: string,
+    limit?: number,
+    options?: YunxiaoReadOptions
+  ) => Promise<YunxiaoWorkItem[]>
+  listYunxiaoWorkItems: (
+    filter?: YunxiaoWorkItemFilter,
+    limit?: number,
+    options?: YunxiaoReadOptions
+  ) => Promise<YunxiaoWorkItem[]>
+  invalidateYunxiaoWorkItemLists: (options?: YunxiaoReadOptions) => void
+  patchYunxiaoWorkItem: (
+    workItemId: string,
+    patch: Partial<YunxiaoWorkItem>,
+    options?: YunxiaoReadOptions
+  ) => void
+}
+
+export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = (set, get) => ({
+  yunxiaoStatus: { connected: false, viewer: null },
+  yunxiaoStatusChecked: false,
+  yunxiaoStatusContextKey: null,
+  yunxiaoWorkItemCache: {},
+  yunxiaoSearchCache: {},
+
+  ...createYunxiaoConnectionActions({ set, get, clearInflight: clearYunxiaoInflight }),
+
+  fetchYunxiaoWorkItem: async (workItemId, accountId, options) => {
+    const scope = getYunxiaoReadScope(get().settings, options?.sourceContext)
+    const { contextKey } = scope
+    const cacheKey = scopedYunxiaoCacheKey(scope, `${accountId ?? 'selected'}::${workItemId}`)
+    const cached = get().yunxiaoWorkItemCache[cacheKey]
+    if (isFresh(cached)) {
+      return cached.data
+    }
+    const reusable = reusableInflight(inflightWorkItemRequests, cacheKey, contextKey)
+    if (reusable) {
+      return reusable
+    }
+    let entry: InflightYunxiaoReadRequest<YunxiaoWorkItem | null>
+    const requestGeneration = currentYunxiaoMutationGeneration()
+    const canWrite = (): boolean =>
+      canWriteYunxiaoReadResult(contextKey, requestGeneration, get().settings, scope.explicitSource)
+    const promise = yunxiaoGetWorkItem(scope.settings, workItemId, accountId)
+      .then((workItem) => {
+        if (inflightWorkItemRequests.get(cacheKey) === entry && canWrite()) {
+          set((s) => ({
+            yunxiaoWorkItemCache: evictStaleEntries({
+              ...s.yunxiaoWorkItemCache,
+              [cacheKey]: { data: workItem, fetchedAt: Date.now() }
+            })
+          }))
+        }
+        return workItem
+      })
+      .catch((error) => {
+        console.warn('[yunxiao] fetchYunxiaoWorkItem failed:', error)
+        if (canWrite() && looksLikeYunxiaoAuthError(error)) {
+          set({ yunxiaoStatus: { connected: false, viewer: null } })
+        }
+        return null
+      })
+      .finally(() => {
+        if (inflightWorkItemRequests.get(cacheKey) === entry) {
+          inflightWorkItemRequests.delete(cacheKey)
+        }
+        if (shouldRefreshStatusAfterRead(accountId, get().yunxiaoStatus) && canWrite()) {
+          void get().checkYunxiaoConnection()
+        }
+      })
+    entry = { promise, contextKey, mutationGeneration: requestGeneration }
+    inflightWorkItemRequests.set(cacheKey, entry)
+    return promise
+  },
+
+  searchYunxiaoWorkItems: async (query, limit = 30, options) =>
+    readYunxiaoWorkItemList({
+      set,
+      get,
+      options,
+      cacheSuffix: `search::${query}::${limit}`,
+      operation: 'searchYunxiaoWorkItems',
+      run: (scope, accountId) => yunxiaoSearchWorkItems(scope.settings, query, limit, accountId)
+    }),
+
+  listYunxiaoWorkItems: async (filter = 'assigned', limit = 30, options) =>
+    readYunxiaoWorkItemList({
+      set,
+      get,
+      options,
+      cacheSuffix: `list::${filter}::${limit}`,
+      operation: 'listYunxiaoWorkItems',
+      run: (scope, accountId) => yunxiaoListWorkItems(scope.settings, filter, limit, accountId)
+    }),
+
+  // Why: list reads are cached for a minute, so an explicit Refresh has to drop
+  // the cached entries first or the effect just re-reads what it already had.
+  invalidateYunxiaoWorkItemLists: (options) => {
+    const inScope = cacheKeyScopeMatcher(options)
+    for (const key of inflightListRequests.keys()) {
+      if (inScope(key)) {
+        inflightListRequests.delete(key)
+      }
+    }
+    set((s) => {
+      const next: Record<string, CacheEntry<YunxiaoWorkItem[]>> = {}
+      for (const [key, entry] of Object.entries(s.yunxiaoSearchCache)) {
+        if (!inScope(key)) {
+          next[key] = entry
+        }
+      }
+      return { yunxiaoSearchCache: next }
+    })
+  },
+
+  patchYunxiaoWorkItem: (workItemId, patch, options) => {
+    const canPatchCacheKey = cacheKeyScopeMatcher(options)
+    set((s) => {
+      let changed = false
+      const nextWorkItemCache = { ...s.yunxiaoWorkItemCache }
+      for (const [key, entry] of Object.entries(nextWorkItemCache)) {
+        if (!canPatchCacheKey(key) || entry?.data?.id !== workItemId) {
+          continue
+        }
+        nextWorkItemCache[key] = { ...entry, data: { ...entry.data, ...patch }, fetchedAt: 0 }
+        changed = true
+      }
+      const nextSearchCache = { ...s.yunxiaoSearchCache }
+      for (const key of Object.keys(nextSearchCache)) {
+        const entry = nextSearchCache[key]
+        if (!canPatchCacheKey(key) || !entry?.data) {
+          continue
+        }
+        const index = entry.data.findIndex((workItem) => workItem.id === workItemId)
+        if (index === -1) {
+          continue
+        }
+        const updatedItems = [...entry.data]
+        updatedItems[index] = { ...updatedItems[index], ...patch }
+        nextSearchCache[key] = { ...entry, data: updatedItems }
+        changed = true
+      }
+      return changed
+        ? { yunxiaoWorkItemCache: nextWorkItemCache, yunxiaoSearchCache: nextSearchCache }
+        : {}
+    })
+  }
+})
+
+type SliceSet = Parameters<StateCreator<AppState, [], [], YunxiaoSlice>>[0]
+type SliceGet = () => AppState
+
+type ListReadArgs = {
+  set: SliceSet
+  get: SliceGet
+  options: YunxiaoReadOptions | undefined
+  cacheSuffix: string
+  operation: string
+  run: (
+    scope: ReturnType<typeof getYunxiaoReadScope>,
+    accountId: YunxiaoAccountSelection | null
+  ) => Promise<YunxiaoWorkItem[]>
+}
+
+function readYunxiaoWorkItemList(args: ListReadArgs): Promise<YunxiaoWorkItem[]> {
+  const { set, get, options, cacheSuffix, operation, run } = args
+  const scope = getYunxiaoReadScope(get().settings, options?.sourceContext)
+  const { contextKey } = scope
+  const accountId = getSelectedAccountId(get().yunxiaoStatus)
+  const cacheKey = scopedYunxiaoCacheKey(scope, `${accountId ?? 'default'}::${cacheSuffix}`)
+  const cached = get().yunxiaoSearchCache[cacheKey]
+  if (isFresh(cached)) {
+    return Promise.resolve(cached.data ?? [])
+  }
+  const reusable = reusableInflight(inflightListRequests, cacheKey, contextKey)
+  if (reusable) {
+    return reusable
+  }
+  let entry: InflightYunxiaoReadRequest<YunxiaoWorkItem[]>
+  const requestGeneration = currentYunxiaoMutationGeneration()
+  const promise = run(scope, accountId)
+    .then((workItems) => {
+      if (
+        inflightListRequests.get(cacheKey) === entry &&
+        canWriteYunxiaoReadResult(
+          contextKey,
+          requestGeneration,
+          get().settings,
+          scope.explicitSource
+        )
+      ) {
+        set((s) => ({
+          yunxiaoSearchCache: evictStaleEntries({
+            ...s.yunxiaoSearchCache,
+            [cacheKey]: { data: workItems, fetchedAt: Date.now() }
+          })
+        }))
+      }
+      return workItems
+    })
+    .catch((error) => handleYunxiaoListError(error, operation))
+    .finally(() => {
+      if (inflightListRequests.get(cacheKey) === entry) {
+        inflightListRequests.delete(cacheKey)
+      }
+    })
+  entry = { promise, contextKey, mutationGeneration: requestGeneration }
+  inflightListRequests.set(cacheKey, entry)
+  return promise
+}
