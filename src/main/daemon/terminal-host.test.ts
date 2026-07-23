@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS,
-  SESSION_FORCE_KILL_RETRY_MS,
-  Session,
-  type SubprocessHandle
-} from './session'
+import { SESSION_FORCE_KILL_RETRY_MS, Session, type SubprocessHandle } from './session'
 import { TerminalHost } from './terminal-host'
 import type { TuiAgent } from '../../shared/types'
 
@@ -464,40 +459,8 @@ describe('TerminalHost', () => {
       expect(host.listSessions()).toHaveLength(0)
     })
 
-    it('retains an immediate-kill session when physical exit times out', async () => {
-      vi.useFakeTimers()
-      try {
-        await host.createOrAttach({
-          sessionId: 'session-1',
-          cols: 80,
-          rows: 24,
-          streamClient: { onData: vi.fn(), onExit: vi.fn() }
-        })
-        lastSubprocess.forceKill = vi.fn()
-
-        const killed = host.kill('session-1', { immediate: true })
-        const rejected = expect(killed).rejects.toThrow('Timed out waiting for PTY process exit')
-        await vi.advanceTimersByTimeAsync(IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS)
-        await rejected
-
-        expect(lastSubprocess.forceKill).toHaveBeenCalledTimes(1)
-        expect(lastSubprocess.dispose).not.toHaveBeenCalled()
-        expect(host.listSessions()).toHaveLength(1)
-        await expect(
-          host.createOrAttach({
-            sessionId: 'session-1',
-            cols: 80,
-            rows: 24,
-            streamClient: { onData: vi.fn(), onExit: vi.fn() }
-          })
-        ).rejects.toThrow('Session not found')
-
-        lastSubprocess._onExitCb?.(137)
-        expect(host.listSessions()).toHaveLength(0)
-      } finally {
-        vi.useRealTimers()
-      }
-    })
+    // Immediate-kill physical-exit timeouts live in
+    // terminal-host-immediate-kill-physical-exit.test.ts.
 
     it('throws for non-existent session', () => {
       expect(() => host.kill('missing')).toThrow('Session not found')

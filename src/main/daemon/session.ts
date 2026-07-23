@@ -10,6 +10,7 @@ import {
 } from '../shell-ready-marker-scanner'
 import { isPowerShellProcess } from '../../shared/shell-process-detection'
 import { killWithDescendantSweep } from '../pty-descendant-termination'
+import { isProcessAlive } from '../pty-process-liveness'
 import type { TuiAgent } from '../../shared/types'
 import { randomUUID } from 'node:crypto'
 import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
@@ -362,7 +363,18 @@ export class Session {
     }
     // Why: escalate a graceful termination now; waiting for the 5s timer would spend most of the physical-exit budget.
     await this.requestForceKillWithRetry()
-    await this.waitForPhysicalExit(timeoutMs)
+    try {
+      await this.waitForPhysicalExit(timeoutMs)
+    } catch (error) {
+      // Why: a reaped child whose exit event never arrived (a Windows ConPTY
+      // handle held open by a survivor loses it) would otherwise stay 'alive'
+      // for the daemon's life, and every later worktree removal fails closed on
+      // it. The process table is the tiebreaker; a live pid keeps the timeout.
+      if (isProcessAlive(this.subprocess.pid)) {
+        throw error
+      }
+      this.handleSubprocessExit(-1)
+    }
   }
 
   signal(sig: string): void {
@@ -645,7 +657,9 @@ export class Session {
 
   private handleSubprocessExit(code: number): void {
     this.physicalExit.markExited()
-    if (this._disposed) {
+    // Why exited too: a synthesized exit can be followed by the real event, and
+    // exit fan-out (clients, reaper) must happen exactly once.
+    if (this._disposed || this._state === 'exited') {
       return
     }
 
