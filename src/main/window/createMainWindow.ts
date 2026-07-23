@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import type { Store } from '../persistence'
 import { getAppIconPath } from '../app-icon'
+import { safelyRevealWindow } from './focus-existing-window'
 import { browserManager } from '../browser/browser-manager'
 import { browserSessionRegistry } from '../browser/browser-session-registry'
 import { translateMain } from '../i18n/main-i18n'
@@ -951,6 +952,12 @@ export function createMainWindow(
       mainWindow.maximize()
     }
   }
+  // Why: an in-app "jump to" (clicking a change notification) must raise Orca
+  // itself, not just navigate behind whatever window is on top.
+  const revealChannel = 'window:reveal'
+  const onReveal = (): void => {
+    safelyRevealWindow(mainWindow)
+  }
   // Why: mainWindow.close() from an IPC handler on Windows can make 'close' misfire, so send window:close-requested directly.
   const requestCloseChannel = 'window:request-close'
   const onRequestClose = (): void => {
@@ -975,6 +982,7 @@ export function createMainWindow(
   }
   ipcMain.on(minimizeChannel, onMinimize)
   ipcMain.on(maximizeChannel, onMaximize)
+  ipcMain.on(revealChannel, onReveal)
   ipcMain.on(requestCloseChannel, onRequestClose)
   ipcMain.on(popupMenuChannel, onPopupMenu)
   ipcMain.handle(isMaximizedChannel, onIsMaximized)
@@ -995,6 +1003,7 @@ export function createMainWindow(
     ipcMain.removeListener(trafficLightChannel, onSyncTrafficLights)
     ipcMain.removeListener(minimizeChannel, onMinimize)
     ipcMain.removeListener(maximizeChannel, onMaximize)
+    ipcMain.removeListener(revealChannel, onReveal)
     browserManager.setDictationShortcutForwardingPredicate(null)
     ipcMain.removeListener(requestCloseChannel, onRequestClose)
     ipcMain.removeListener(popupMenuChannel, onPopupMenu)

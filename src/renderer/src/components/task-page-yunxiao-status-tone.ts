@@ -1,4 +1,5 @@
 import {
+  isYunxiaoPendingConfirmStatus,
   isYunxiaoReopenedStatus,
   isYunxiaoUnfixedStatus
 } from '../../../shared/yunxiao-defect-status'
@@ -57,14 +58,20 @@ export function getYunxiaoStatusDotTone(status: YunxiaoStatusRef): string {
 
 /**
  * One-click fix only makes sense for a defect that is actually outstanding —
- * an unfixed, reopened, or in-progress 缺陷. Everything else keeps a read-only row.
+ * an unfixed, reopened, in-progress, or pending-confirmation 缺陷. Everything
+ * else keeps a read-only row.
  */
 export function canFixYunxiaoWorkItem(workItem: YunxiaoWorkItem): boolean {
   if (workItem.workItemType.category !== 'Bug') {
     return false
   }
   const accent = getYunxiaoStatusAccent(workItem.status)
-  return accent === 'unfixed' || accent === 'reopened' || accent === 'active'
+  return (
+    accent === 'unfixed' ||
+    accent === 'reopened' ||
+    accent === 'active' ||
+    isYunxiaoPendingConfirmStatus(workItem.status.name)
+  )
 }
 
 export type YunxiaoPriorityLevel = 'urgent' | 'high' | 'medium' | 'low' | 'unknown'

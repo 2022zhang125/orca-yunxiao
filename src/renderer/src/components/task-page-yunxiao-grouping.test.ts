@@ -140,14 +140,15 @@ describe('one-click fix availability', () => {
     return { ...item, workItemType: { id: 'Bug', name: '缺陷', category: 'Bug' } }
   }
 
-  it('offers the fix on unfixed, reopened, and in-progress defects', () => {
+  it('offers the fix on unfixed, reopened, in-progress, and pending-confirmation defects', () => {
     expect(canFixYunxiaoWorkItem(defect('暂不修复', 'done'))).toBe(true)
     expect(canFixYunxiaoWorkItem(defect('未修复', 'todo'))).toBe(true)
     expect(canFixYunxiaoWorkItem(defect('重新打开', 'todo'))).toBe(true)
     expect(canFixYunxiaoWorkItem(defect('处理中', 'in-progress'))).toBe(true)
+    expect(canFixYunxiaoWorkItem(defect('待确认', 'todo'))).toBe(true)
 
     expect(canFixYunxiaoWorkItem(defect('已修复', 'done'))).toBe(false)
-    expect(canFixYunxiaoWorkItem(defect('待确认', 'todo'))).toBe(false)
+    expect(canFixYunxiaoWorkItem(defect('待处理', 'todo'))).toBe(false)
   })
 
   it('never offers the fix on a requirement or task', () => {

@@ -3105,6 +3105,7 @@ export type PreloadApi = {
     onFullscreenChanged: (callback: (isFullScreen: boolean) => void) => () => void
     minimize: () => void
     maximize: () => void
+    revealWindow: () => void
     isMaximized: () => Promise<boolean>
     onMaximizeChanged: (callback: (isMaximized: boolean) => void) => () => void
     requestClose: () => void

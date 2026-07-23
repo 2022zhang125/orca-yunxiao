@@ -3183,6 +3183,9 @@ export default function TaskPage(): React.JSX.Element {
     return bySerial
   }, [worktreesByRepo])
   const invalidateYunxiaoWorkItemLists = useAppStore((s) => s.invalidateYunxiaoWorkItemLists)
+  // Bumped when a change toast's View jumps here: the list must land fresh, not
+  // on the cached read the toast was announcing a change to.
+  const yunxiaoListRefreshNonce = useAppStore((s) => s.yunxiaoListRefreshNonce)
   const checkYunxiaoConnection = useAppStore((s) => s.checkYunxiaoConnection)
   const providerRuntimeContextKey = getProviderRuntimeContextKey(settings)
   const providerRuntimeContextKeyRef = useRef(providerRuntimeContextKey)
@@ -7847,6 +7850,7 @@ export default function TaskPage(): React.JSX.Element {
     taskResumeApplied,
     taskSource,
     yunxiaoConnected,
+    yunxiaoListRefreshNonce,
     yunxiaoRefreshNonce,
     yunxiaoTaskSourceContext
   ])

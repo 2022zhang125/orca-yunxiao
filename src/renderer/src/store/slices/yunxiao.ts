@@ -8,19 +8,23 @@ import type {
   YunxiaoWorkItemFilter
 } from '../../../../shared/types'
 import type { CacheEntry } from './github'
-import { isIntegrationCredentialDecryptionError } from '../../../../shared/integration-credential-errors'
 import {
   yunxiaoGetWorkItem,
   yunxiaoListWorkItems,
   yunxiaoSearchWorkItems
 } from '@/runtime/runtime-yunxiao-client'
 import { getTaskSourceCacheScope } from '../../../../shared/task-source-context'
+import { resetYunxiaoWorkItemChangeTracking } from '@/lib/yunxiao-work-item-change-toasts'
 import { createYunxiaoConnectionActions } from './yunxiao-connection-actions'
+import {
+  clearYunxiaoListInflight,
+  dropYunxiaoListInflight,
+  readYunxiaoWorkItemList
+} from './yunxiao-work-item-list-read'
 import {
   canWriteYunxiaoReadResult,
   currentYunxiaoMutationGeneration,
   evictStaleEntries,
-  getSelectedAccountId,
   getYunxiaoReadScope,
   isFresh,
   looksLikeYunxiaoAuthError,
@@ -34,11 +38,11 @@ const inflightWorkItemRequests = new Map<
   string,
   InflightYunxiaoReadRequest<YunxiaoWorkItem | null>
 >()
-const inflightListRequests = new Map<string, InflightYunxiaoReadRequest<YunxiaoWorkItem[]>>()
 
 function clearYunxiaoInflight(): void {
   inflightWorkItemRequests.clear()
-  inflightListRequests.clear()
+  clearYunxiaoListInflight()
+  resetYunxiaoWorkItemChangeTracking()
 }
 
 /** Without an explicit 云效 source context the caller means every scope. */
@@ -63,23 +67,13 @@ function reusableInflight<T>(
     : null
 }
 
-// Credential/auth failures are surfaced through connection state, so they keep
-// the empty-list contract. Other failures (forbidden, network, 5xx) reject so
-// the Tasks panel can show a real error instead of a misleading "No items".
-function handleYunxiaoListError(error: unknown, operation: string): YunxiaoWorkItem[] {
-  console.warn(`[yunxiao] ${operation} failed:`, error)
-  if (isIntegrationCredentialDecryptionError(error) || looksLikeYunxiaoAuthError(error)) {
-    return []
-  }
-  throw error
-}
-
 export type YunxiaoSlice = {
   yunxiaoStatus: YunxiaoConnectionStatus
   yunxiaoStatusChecked: boolean
   yunxiaoStatusContextKey: string | null
   yunxiaoWorkItemCache: Record<string, CacheEntry<YunxiaoWorkItem>>
   yunxiaoSearchCache: Record<string, CacheEntry<YunxiaoWorkItem[]>>
+  yunxiaoListRefreshNonce: number
 
   checkYunxiaoConnection: () => Promise<void>
   connectYunxiao: (args: {
@@ -108,6 +102,7 @@ export type YunxiaoSlice = {
     options?: YunxiaoReadOptions
   ) => Promise<YunxiaoWorkItem[]>
   invalidateYunxiaoWorkItemLists: (options?: YunxiaoReadOptions) => void
+  requestYunxiaoListRefresh: () => void
   patchYunxiaoWorkItem: (
     workItemId: string,
     patch: Partial<YunxiaoWorkItem>,
@@ -121,6 +116,7 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
   yunxiaoStatusContextKey: null,
   yunxiaoWorkItemCache: {},
   yunxiaoSearchCache: {},
+  yunxiaoListRefreshNonce: 0,
 
   ...createYunxiaoConnectionActions({ set, get, clearInflight: clearYunxiaoInflight }),
 
@@ -196,11 +192,7 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
   // the cached entries first or the effect just re-reads what it already had.
   invalidateYunxiaoWorkItemLists: (options) => {
     const inScope = cacheKeyScopeMatcher(options)
-    for (const key of inflightListRequests.keys()) {
-      if (inScope(key)) {
-        inflightListRequests.delete(key)
-      }
-    }
+    dropYunxiaoListInflight(inScope)
     set((s) => {
       const next: Record<string, CacheEntry<YunxiaoWorkItem[]>> = {}
       for (const [key, entry] of Object.entries(s.yunxiaoSearchCache)) {
@@ -210,6 +202,14 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
       }
       return { yunxiaoSearchCache: next }
     })
+  },
+
+  // Why: the Tasks list owns its own fetch effect, so an outside caller — a
+  // change toast the user just clicked — can only force a re-read by dropping
+  // the cache and bumping a signal that effect depends on.
+  requestYunxiaoListRefresh: () => {
+    get().invalidateYunxiaoWorkItemLists()
+    set((s) => ({ yunxiaoListRefreshNonce: s.yunxiaoListRefreshNonce + 1 }))
   },
 
   patchYunxiaoWorkItem: (workItemId, patch, options) => {
@@ -245,65 +245,3 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
     })
   }
 })
-
-type SliceSet = Parameters<StateCreator<AppState, [], [], YunxiaoSlice>>[0]
-type SliceGet = () => AppState
-
-type ListReadArgs = {
-  set: SliceSet
-  get: SliceGet
-  options: YunxiaoReadOptions | undefined
-  cacheSuffix: string
-  operation: string
-  run: (
-    scope: ReturnType<typeof getYunxiaoReadScope>,
-    accountId: YunxiaoAccountSelection | null
-  ) => Promise<YunxiaoWorkItem[]>
-}
-
-function readYunxiaoWorkItemList(args: ListReadArgs): Promise<YunxiaoWorkItem[]> {
-  const { set, get, options, cacheSuffix, operation, run } = args
-  const scope = getYunxiaoReadScope(get().settings, options?.sourceContext)
-  const { contextKey } = scope
-  const accountId = getSelectedAccountId(get().yunxiaoStatus)
-  const cacheKey = scopedYunxiaoCacheKey(scope, `${accountId ?? 'default'}::${cacheSuffix}`)
-  const cached = get().yunxiaoSearchCache[cacheKey]
-  if (isFresh(cached)) {
-    return Promise.resolve(cached.data ?? [])
-  }
-  const reusable = reusableInflight(inflightListRequests, cacheKey, contextKey)
-  if (reusable) {
-    return reusable
-  }
-  let entry: InflightYunxiaoReadRequest<YunxiaoWorkItem[]>
-  const requestGeneration = currentYunxiaoMutationGeneration()
-  const promise = run(scope, accountId)
-    .then((workItems) => {
-      if (
-        inflightListRequests.get(cacheKey) === entry &&
-        canWriteYunxiaoReadResult(
-          contextKey,
-          requestGeneration,
-          get().settings,
-          scope.explicitSource
-        )
-      ) {
-        set((s) => ({
-          yunxiaoSearchCache: evictStaleEntries({
-            ...s.yunxiaoSearchCache,
-            [cacheKey]: { data: workItems, fetchedAt: Date.now() }
-          })
-        }))
-      }
-      return workItems
-    })
-    .catch((error) => handleYunxiaoListError(error, operation))
-    .finally(() => {
-      if (inflightListRequests.get(cacheKey) === entry) {
-        inflightListRequests.delete(cacheKey)
-      }
-    })
-  entry = { promise, contextKey, mutationGeneration: requestGeneration }
-  inflightListRequests.set(cacheKey, entry)
-  return promise
-}

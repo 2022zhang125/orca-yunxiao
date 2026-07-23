@@ -18,8 +18,21 @@ const UNFIXED_STATUS_NAMES = new Set([
   'deferred fix'
 ])
 
+// 待确认 sits in an unstarted stage, but the defect is already filed and
+// actionable — fixing it is how it gets confirmed.
+const PENDING_CONFIRM_STATUS_NAMES = new Set([
+  '待确认',
+  'to be confirmed',
+  'pending confirmation',
+  'unconfirmed'
+])
+
 export function isYunxiaoReopenedStatus(statusName: string): boolean {
   return REOPENED_STATUS_NAMES.has(statusName.trim().toLowerCase())
+}
+
+export function isYunxiaoPendingConfirmStatus(statusName: string): boolean {
+  return PENDING_CONFIRM_STATUS_NAMES.has(statusName.trim().toLowerCase())
 }
 
 export function isYunxiaoUnfixedStatus(statusName: string): boolean {

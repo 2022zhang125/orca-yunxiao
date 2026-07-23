@@ -133,6 +133,55 @@ describe('createMainWindow', () => {
     expect(browserWindowInstance.loadURL).not.toHaveBeenCalled()
   })
 
+  // Why: in-app change notifications navigate on click, so a jump that left Orca
+  // behind another window — or minimized — would strand the user on a page they
+  // cannot see. The reveal must also survive the window's teardown unregistering.
+  it('restores and focuses the window when the renderer requests a reveal', () => {
+    const browserWindowInstance = {
+      webContents: {
+        on: vi.fn(),
+        setZoomLevel: vi.fn(),
+        setBackgroundThrottling: vi.fn(),
+        invalidate: vi.fn(),
+        setWindowOpenHandler: vi.fn(),
+        send: vi.fn(),
+        isDevToolsOpened: vi.fn(),
+        openDevTools: vi.fn(),
+        closeDevTools: vi.fn()
+      },
+      on: vi.fn(),
+      isDestroyed: vi.fn(() => false),
+      isMinimized: vi.fn(() => true),
+      restore: vi.fn(),
+      focus: vi.fn(),
+      isMaximized: vi.fn(() => false),
+      isFullScreen: vi.fn(() => false),
+      getSize: vi.fn(() => [1200, 800]),
+      setSize: vi.fn(),
+      maximize: vi.fn(),
+      show: vi.fn(),
+      loadFile: vi.fn(),
+      loadURL: vi.fn()
+    }
+    browserWindowMock.mockImplementation(function () {
+      return browserWindowInstance
+    })
+
+    createMainWindow(null)
+
+    const reveal = vi
+      .mocked(ipcMain.on)
+      .mock.calls.find(([channel]) => channel === 'window:reveal')?.[1]
+    expect(reveal).toBeTypeOf('function')
+    expect(browserWindowInstance.focus).not.toHaveBeenCalled()
+
+    reveal?.({} as never)
+
+    expect(browserWindowInstance.restore).toHaveBeenCalledTimes(1)
+    expect(browserWindowInstance.show).toHaveBeenCalled()
+    expect(browserWindowInstance.focus).toHaveBeenCalledTimes(1)
+  })
+
   it('enables renderer sandboxing and opens external links safely', () => {
     const windowHandlers: Record<string, (...args: any[]) => void> = {}
     const webContents = {

@@ -1,11 +1,17 @@
-import React, { useCallback, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Wrench, X } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, ListChecks, Wrench, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import { YunxiaoWorkItemRow } from '@/components/task-page-yunxiao-work-item-row'
+import {
+  getYunxiaoSelectionState,
+  selectableYunxiaoWorkItems,
+  toggleYunxiaoRowSelection
+} from '@/components/task-page-yunxiao-batch-selection'
 import {
   getYunxiaoPriorityRank,
   getYunxiaoStatusDotTone
@@ -132,15 +138,12 @@ function YunxiaoStatusGroupHeader({
   section: TaskPageYunxiaoWorkItemSection
 }): React.JSX.Element {
   return (
-    // Sticky so the status a long group belongs to stays readable while scrolling;
-    // that needs an opaque surface, hence bg-secondary over a translucent wash.
     <Button
       type="button"
       variant="ghost"
       {...props}
       className={cn(
-        'sticky top-0 z-10 h-9 w-full justify-start rounded-none bg-secondary px-3 text-left font-normal transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
-        open && 'border-b border-border/50',
+        'h-9 flex-1 justify-start rounded-none px-2 text-left font-normal transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
         className
       )}
     >
@@ -191,17 +194,29 @@ export function TaskPageYunxiaoWorkItemList({
     [statusDirection, workItems]
   )
 
-  // Selection resolves against the live list, so a row that started fixing (or
-  // left the filter) since it was ticked cannot be double-submitted.
-  const checkedWorkItems = useMemo(
-    () =>
-      workItems.filter(
-        (workItem) =>
-          checkedRows.has(yunxiaoWorkItemRowKey(workItem)) &&
-          !fixWorktreeIdBySerial.has(workItem.serialNumber)
-      ),
-    [checkedRows, fixWorktreeIdBySerial, workItems]
+  const allSelectable = useMemo(
+    () => selectableYunxiaoWorkItems(workItems, fixWorktreeIdBySerial),
+    [fixWorktreeIdBySerial, workItems]
   )
+
+  // Why selectable, not just "still listed": the count must equal the ticks the
+  // user can actually see. A defect that stopped being fixable since it was
+  // ticked (someone closed it, a poll refreshed its status) renders no checkbox,
+  // so counting it would strand the batch bar with nothing to untick.
+  const checkedWorkItems = useMemo(
+    () => allSelectable.filter((workItem) => checkedRows.has(yunxiaoWorkItemRowKey(workItem))),
+    [allSelectable, checkedRows]
+  )
+
+  // Why prune rather than only derive: a key left behind by a no-longer-fixable
+  // defect would silently re-arm if that defect reopened later.
+  useEffect(() => {
+    const selectableKeys = new Set(allSelectable.map(yunxiaoWorkItemRowKey))
+    setCheckedRows((current) => {
+      const next = new Set([...current].filter((key) => selectableKeys.has(key)))
+      return next.size === current.size ? current : next
+    })
+  }, [allSelectable])
 
   const toggleCheckedRow = useCallback((workItem: YunxiaoWorkItem) => {
     const key = yunxiaoWorkItemRowKey(workItem)
@@ -213,6 +228,35 @@ export function TaskPageYunxiaoWorkItemList({
       return next
     })
   }, [])
+
+  const isRowChecked = useCallback(
+    (workItem: YunxiaoWorkItem) => checkedRows.has(yunxiaoWorkItemRowKey(workItem)),
+    [checkedRows]
+  )
+  const sectionSelectionOf = useCallback(
+    (section: TaskPageYunxiaoWorkItemSection) => {
+      const selectable = selectableYunxiaoWorkItems(section.workItems, fixWorktreeIdBySerial)
+      const state = getYunxiaoSelectionState(selectable, isRowChecked)
+      return {
+        selectable,
+        checkedState: state === 'all' ? true : state === 'some' ? 'indeterminate' : false
+      } as const
+    },
+    [fixWorktreeIdBySerial, isRowChecked]
+  )
+  const toggleSectionSelection = useCallback(
+    (section: TaskPageYunxiaoWorkItemSection) => {
+      const selectable = selectableYunxiaoWorkItems(section.workItems, fixWorktreeIdBySerial)
+      setCheckedRows((current) =>
+        toggleYunxiaoRowSelection(current, selectable, yunxiaoWorkItemRowKey)
+      )
+    },
+    [fixWorktreeIdBySerial]
+  )
+  const selectEveryRow = useCallback(() => {
+    setCheckedRows(new Set(allSelectable.map(yunxiaoWorkItemRowKey)))
+  }, [allSelectable])
+  const batchBarVisible = checkedWorkItems.length > 0
 
   const submitBatchFix = useCallback(() => {
     if (checkedWorkItems.length > 0) {
@@ -234,10 +278,11 @@ export function TaskPageYunxiaoWorkItemList({
 
   return (
     <div className="divide-y divide-border/50">
-      {checkedWorkItems.length > 0 ? (
+      {batchBarVisible ? (
         // Sticky above the group headers so the submit stays reachable however
-        // deep the tick that armed it happened.
-        <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-3 py-1.5">
+        // deep the tick that armed it happened. Fixed height: the group headers
+        // stack below it by that exact offset, so a taller bar would hide them.
+        <div className="sticky top-0 z-20 flex h-9 items-center gap-2 border-b border-border bg-background px-3">
           <span className="text-[12px] tabular-nums text-muted-foreground">
             {translate('auto.components.TaskPage.yunxiao_batch_selected', '{{value0}} selected', {
               value0: checkedWorkItems.length
@@ -247,6 +292,14 @@ export function TaskPageYunxiaoWorkItemList({
             <Wrench className="size-3" />
             {translate('auto.components.TaskPage.yunxiao_batch_fix_button', 'Fix selected')}
           </Button>
+          {/* Widens a started selection to the whole list; the per-status boxes
+              are how a selection starts, so this only shows once one exists. */}
+          {checkedWorkItems.length < allSelectable.length ? (
+            <Button size="xs" variant="ghost" onClick={selectEveryRow} className="gap-1">
+              <ListChecks className="size-3" />
+              {translate('auto.components.TaskPage.yunxiao_batch_select_all', 'Select all')}
+            </Button>
+          ) : null}
           <Button
             size="xs"
             variant="ghost"
@@ -276,9 +329,38 @@ export function TaskPageYunxiaoWorkItemList({
               })
             }}
           >
-            <CollapsibleTrigger asChild>
-              <YunxiaoStatusGroupHeader open={open} section={section} />
-            </CollapsibleTrigger>
+            {/* Sticky so the status a long group belongs to stays readable while
+                scrolling; that needs an opaque surface, hence bg-secondary. The
+                select-all box is a sibling of the trigger, never inside it — a
+                checkbox nested in a button is invalid and unreachable. */}
+            <div
+              className={cn(
+                'sticky z-10 flex h-9 items-center gap-1.5 bg-secondary pl-3',
+                // Stacks under the batch bar instead of vanishing behind it.
+                batchBarVisible ? 'top-9' : 'top-0',
+                open && 'border-b border-border/50'
+              )}
+            >
+              {/* The slot is held even with nothing selectable, so group labels
+                  stay on one vertical line down the list. */}
+              <span className="flex size-3.5 shrink-0 items-center justify-center">
+                {sectionSelectionOf(section).selectable.length > 0 ? (
+                  <Checkbox
+                    checked={sectionSelectionOf(section).checkedState}
+                    onCheckedChange={() => toggleSectionSelection(section)}
+                    aria-label={translate(
+                      'auto.components.TaskPage.yunxiao_batch_select_group_aria',
+                      'Select every fixable defect in {{value0}}',
+                      { value0: section.label }
+                    )}
+                    className="size-3.5"
+                  />
+                ) : null}
+              </span>
+              <CollapsibleTrigger asChild>
+                <YunxiaoStatusGroupHeader open={open} section={section} />
+              </CollapsibleTrigger>
+            </div>
             <CollapsibleContent className="collapsible-height-content divide-y divide-border/50">
               {section.workItems.map((workItem) => (
                 <YunxiaoWorkItemRow

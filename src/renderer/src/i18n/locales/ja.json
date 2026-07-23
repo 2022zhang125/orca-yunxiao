@@ -1834,8 +1834,18 @@
         "yunxiao_batch_selected": "{{value0}} selected",
         "yunxiao_batch_fix_button": "Fix selected",
         "yunxiao_batch_clear": "Clear",
+        "yunxiao_batch_select_all": "Select all",
+        "yunxiao_batch_select_group_aria": "Select every fixable defect in {{value0}}",
         "yunxiao_batch_fix_no_repo": "Select an active repo first so the fixes know where to run.",
-        "yunxiao_view_fix_tooltip": "View fix"
+        "yunxiao_view_fix_tooltip": "View fix",
+        "yunxiao_toast_new_item": "New {{value0}}: {{value1}}",
+        "yunxiao_toast_item_updated": "{{value0}} updated ({{value1}})",
+        "yunxiao_toast_bulk_changes": "{{value0}} 云效 work items changed",
+        "yunxiao_toast_fix_working": "{{value0}} fix is running again",
+        "yunxiao_toast_fix_attention": "{{value0}} fix needs your input",
+        "yunxiao_toast_fix_done": "{{value0}} fix finished — review the workspace",
+        "yunxiao_toast_fix_done_removed": "{{value0}} fix finished — workspace removed",
+        "yunxiao_toast_fix_cleanup_failed": "{{value0}} fix workspace could not be removed: {{value1}}"
       },
       "Terminal": {
         "73768427cf": "閉じる",

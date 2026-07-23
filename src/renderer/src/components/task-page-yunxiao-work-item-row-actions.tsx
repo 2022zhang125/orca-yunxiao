@@ -1,7 +1,8 @@
 import React from 'react'
-import { ChevronDown, ExternalLink, SquareArrowOutUpRight, Wrench } from 'lucide-react'
+import { ChevronDown, ExternalLink, Wrench } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { DetailIcon } from '@/components/icons/DetailIcon'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { canFixYunxiaoWorkItem } from '@/components/task-page-yunxiao-status-tone'
 import { translate } from '@/i18n/i18n'
@@ -38,15 +39,17 @@ export function YunxiaoWorkItemRowActions({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="secondary"
+              variant="ghost"
               size="icon-xs"
               onClick={(event) => {
                 event.stopPropagation()
                 onViewFixWorkspace(fixWorktreeId)
               }}
               aria-label={`${viewLabel} — ${workItem.serialNumber}`}
+              // Same slot as the fix button, so it keeps the same success fill.
+              className="bg-status-success text-background hover:bg-status-success hover:text-background hover:brightness-110"
             >
-              <SquareArrowOutUpRight className="size-3.5" />
+              <DetailIcon className="size-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={6}>

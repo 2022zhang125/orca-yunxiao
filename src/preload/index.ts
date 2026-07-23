@@ -3922,6 +3922,12 @@ const api = {
     maximize: (): void => {
       ipcRenderer.send('window:maximize')
     },
+    /** Raise Orca itself for an in-app "jump to" action — restores from minimize
+     *  and takes focus, so acting on a notification never leaves the user hunting
+     *  for the window it navigated. */
+    revealWindow: (): void => {
+      ipcRenderer.send('window:reveal')
+    },
     /** Desktop custom titlebar only: read initial maximize state on mount — maximize-changed only fires on transitions. */
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
     /** Desktop custom titlebar only: subscribe to maximize-state changes so the maximize button shows the right icon. */

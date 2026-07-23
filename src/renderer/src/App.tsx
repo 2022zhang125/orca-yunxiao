@@ -62,6 +62,8 @@ import { StarNagToastHost } from './components/star-nag/StarNagToastHost'
 import { SkillFreshnessNudge } from './components/skills/SkillFreshnessNudge'
 import { SkillFreshnessUpdateDialog } from './components/skills/SkillFreshnessUpdateDialog'
 import { TelemetryFirstLaunchSurface } from './components/TelemetryFirstLaunchSurface'
+import { YunxiaoFixPhaseToasts } from './components/yunxiao-fix-phase-toasts'
+import { YunxiaoWorkItemChangePoller } from './components/yunxiao-work-item-change-poller'
 import { ZoomOverlay } from './components/ZoomOverlay'
 import { onOnboardingReopened } from './components/onboarding/show-onboarding-event'
 import { shouldShowOnboarding } from './components/onboarding/should-show-onboarding'
@@ -2601,6 +2603,8 @@ function App(): React.JSX.Element {
         </ConfirmationDialogProvider>
       </TooltipProvider>
       <Toaster closeButton toastOptions={{ className: 'font-sans text-sm' }} />
+      <YunxiaoFixPhaseToasts />
+      <YunxiaoWorkItemChangePoller />
       <SkillFreshnessNudge />
       <PinnedTabCloseDialog />
       {/* Why: Electron's drag-region hit-test is DOM-order-based (ignores z-index); render last so WindowControls stay clickable. */}
