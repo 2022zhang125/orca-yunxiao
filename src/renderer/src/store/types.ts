@@ -27,6 +27,7 @@ import type { AgentStatusSlice } from './slices/agent-status'
 import type { PaneForegroundAgentSlice } from './slices/pane-foreground-agent'
 import type { DiffCommentsSlice } from './slices/diffComments'
 import type { DetectedAgentsSlice } from './slices/detected-agents'
+import type { RuntimeDetectedAgentsSlice } from './slices/runtime-detected-agents'
 import type { WorktreeNavHistorySlice } from './slices/worktree-nav-history'
 import type { DictationSlice } from './slices/dictation'
 import type { WorkspaceCleanupSlice } from './slices/workspace-cleanup'
@@ -68,6 +69,7 @@ export type AppState = RepoSlice &
   PaneForegroundAgentSlice &
   DiffCommentsSlice &
   DetectedAgentsSlice &
+  RuntimeDetectedAgentsSlice &
   WorktreeNavHistorySlice &
   DictationSlice &
   WorkspaceCleanupSlice &

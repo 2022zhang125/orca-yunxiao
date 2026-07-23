@@ -4280,7 +4280,9 @@
           "ca74db7550": "SSH를 통한 원격 프로젝트",
           "021538e1d1": "SSH 연결이 끊어졌습니다.",
           "runtimeHostDisconnected": "서버 연결 끊김",
+          "runtimeHostDisconnectedNamed": "{{hostName}} 연결 끊김",
           "runtimeHostProject": "Orca 서버의 프로젝트",
+          "runtimeHostProjectNamed": "{{hostName}}의 프로젝트",
           "automationCreated": "자동화로 생성됨",
           "branchIdentity": "브랜치",
           "branchFolderPathIdentity": "브랜치 또는 폴더 경로",
@@ -5119,7 +5121,11 @@
           "3f1bdf3cb4": "환경 텍스트가 너무 커서 안전하게 파싱할 수 없습니다.",
           "codexSessionSource": "가져올 Codex 홈",
           "codexSessionSourceInfo": "Codex 기록 가져오기 정보",
-          "codexSessionSourceTooltip": "Orca는 격리된 홈에서 Codex를 실행합니다. 기존 Codex 홈을 지정하여 세션 기록을 가져옵니다. 비워두면 ~/.codex를 사용합니다."
+          "codexSessionSourceTooltip": "Orca는 격리된 홈에서 Codex를 실행합니다. 기존 Codex 홈을 지정하여 세션 기록을 가져옵니다. 비워두면 ~/.codex를 사용합니다.",
+          "03e1a5081a": "on {{value0}}",
+          "25a41a9aad": "Re-detect agents installed on the active server",
+          "remoteDetectionFailed": "Couldn’t detect installed agents. Check the host connection and try again.",
+          "retryDetection": "Retry"
         },
         "AppIconSelector": {
           "d5a112dc9b": "다음 아이콘",
