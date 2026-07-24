@@ -3,10 +3,10 @@ import type { YunxiaoWorkItem, YunxiaoWorkItemFilter } from '../../../shared/typ
 /**
  * 云效 exposes no push channel a desktop client can subscribe to — its webhooks
  * need a reachable callback URL — so noticing a teammate's change means polling
- * for it. One minute matches the list cache's TTL: the freshest a read can be
- * before the cache would just answer with its own previous snapshot.
+ * for it. Each tick drops the cached lists before reading, so this interval —
+ * not the cache TTL — is how late a change can surface.
  */
-export const YUNXIAO_CHANGE_POLL_INTERVAL_MS = 60_000
+export const YUNXIAO_CHANGE_POLL_INTERVAL_MS = 30_000
 
 /** The lists that carry work related to me: mine to fix, and mine to follow. */
 export const YUNXIAO_WATCHED_FILTERS: readonly YunxiaoWorkItemFilter[] = ['assigned', 'created']
@@ -35,10 +35,15 @@ export function createYunxiaoChangePoll(deps: {
       return inFlight
     }
     deps.invalidate()
-    const run = Promise.all(
-      // A failed read is not evidence of change; the next tick retries.
-      filters.map((filter) => deps.read(filter, limit).catch(() => []))
-    ).then(() => undefined)
+    const run = (async () => {
+      // Sequential, not concurrent: a reassignment surfaces in both watched
+      // lists, and reading assigned first makes its departure — not the created
+      // list's echo of the same event — the message the user gets.
+      for (const filter of filters) {
+        // A failed read is not evidence of change; the next tick retries.
+        await deps.read(filter, limit).catch(() => [])
+      }
+    })()
     inFlight = run
     void run.finally(() => {
       if (inFlight === run) {

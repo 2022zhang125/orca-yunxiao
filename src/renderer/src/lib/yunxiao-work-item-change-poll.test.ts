@@ -53,7 +53,8 @@ describe('createYunxiaoChangePoll', () => {
 
     expect(second).toBe(first)
     expect(invalidate).toHaveBeenCalledTimes(1)
-    expect(read).toHaveBeenCalledTimes(YUNXIAO_WATCHED_FILTERS.length)
+    // Reads are sequential, so only the first watched list is in flight here.
+    expect(read).toHaveBeenCalledTimes(1)
 
     pending.resolve()
     await first

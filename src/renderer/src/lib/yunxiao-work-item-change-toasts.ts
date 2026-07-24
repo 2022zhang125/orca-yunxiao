@@ -5,13 +5,14 @@ import type { YunxiaoWorkItem } from '../../../shared/types'
 
 /**
  * Bottom-right toasts for remote 云效 changes: when a fresh list read lands,
- * items that appeared or changed since the previous read of the same list are
- * announced, so edits made by teammates surface without watching the Tasks page.
+ * items that appeared, changed, or left the list since the previous read of the
+ * same list are announced, so edits made by teammates surface without watching
+ * the Tasks page.
  */
 
-type WorkItemFingerprint = { statusName: string; updatedAt: string }
-
-const snapshotsByListKey = new Map<string, Map<string, WorkItemFingerprint>>()
+// Snapshots keep the whole item, not only the compared fields: an item that left
+// the list still has to name itself in the toast the fresh read cannot describe.
+const snapshotsByListKey = new Map<string, Map<string, YunxiaoWorkItem>>()
 // The same change can arrive through several list presets (assigned/created/…);
 // remember what was already announced so it toasts once, not once per preset.
 const announcedAt = new Map<string, number>()
@@ -24,49 +25,126 @@ const MAX_INDIVIDUAL_TOASTS = 3
 export type YunxiaoWorkItemListChanges = {
   added: YunxiaoWorkItem[]
   updated: YunxiaoWorkItem[]
+  /** Previous-read copies of the items the fresh read no longer lists. */
+  removed: YunxiaoWorkItem[]
+  /** Serial numbers among `updated` whose owner moved. */
+  reassigned: string[]
 }
 
-/**
- * Jumps to the 云效 list. Refreshing is part of the jump, not a follow-up: the
- * toast is announcing something the list's own cached read predates, so landing
- * on a stale list is the one outcome the notification must not produce.
- */
-export type YunxiaoWorkItemChangeToastOptions = { onView?: () => void }
+export type YunxiaoWorkItemChangeToastOptions = {
+  /**
+   * Jumps to the 云效 list. Refreshing is part of the jump, not a follow-up: the
+   * toast is announcing something the list's own cached read predates, so
+   * landing on a stale list is the one outcome the notification must not
+   * produce.
+   */
+  onView?: () => void
+  /**
+   * Announce the items that left the list. Only the assigned list loses one to a
+   * reassignment; elsewhere a disappearance means deleted or ranked out, which
+   * is not the user's news.
+   */
+  announceRemoved?: boolean
+  /**
+   * The read's limit. A list sitting at its limit may have dropped an item to
+   * the slice rather than to a real change, so removals stay silent there.
+   */
+  listLimit?: number
+}
 
-function fingerprint(workItem: YunxiaoWorkItem): WorkItemFingerprint {
-  return { statusName: workItem.status.name, updatedAt: workItem.updatedAt }
+type AnnouncementKind = 'added' | 'updated' | 'removed'
+
+function assigneeUserId(workItem: YunxiaoWorkItem): string | null {
+  return workItem.assignee?.userId ?? null
+}
+
+function hasChanged(before: YunxiaoWorkItem, after: YunxiaoWorkItem): boolean {
+  return (
+    before.status.name !== after.status.name ||
+    before.updatedAt !== after.updatedAt ||
+    // Why: 云效 does not reliably bump gmtModified on a reassignment, so the
+    // owner is compared directly instead of inferred from updatedAt.
+    assigneeUserId(before) !== assigneeUserId(after)
+  )
 }
 
 /** Diff a fresh list against the previous snapshot of the same list read. */
 export function diffYunxiaoWorkItemSnapshot(
-  previous: ReadonlyMap<string, WorkItemFingerprint> | undefined,
+  previous: ReadonlyMap<string, YunxiaoWorkItem> | undefined,
   workItems: readonly YunxiaoWorkItem[]
 ): YunxiaoWorkItemListChanges {
   // No baseline yet (first read after launch/reconnect): nothing has "changed".
   if (!previous) {
-    return { added: [], updated: [] }
+    return { added: [], updated: [], removed: [], reassigned: [] }
   }
   const added: YunxiaoWorkItem[] = []
   const updated: YunxiaoWorkItem[] = []
+  const reassigned: string[] = []
+  const present = new Set<string>()
   for (const workItem of workItems) {
+    present.add(workItem.serialNumber)
     const before = previous.get(workItem.serialNumber)
     if (!before) {
       added.push(workItem)
-    } else if (
-      before.statusName !== workItem.status.name ||
-      before.updatedAt !== workItem.updatedAt
-    ) {
+    } else if (hasChanged(before, workItem)) {
       updated.push(workItem)
+      if (assigneeUserId(before) !== assigneeUserId(workItem)) {
+        reassigned.push(workItem.serialNumber)
+      }
     }
   }
-  return { added, updated }
+  const removed: YunxiaoWorkItem[] = []
+  for (const [serialNumber, before] of previous) {
+    if (!present.has(serialNumber)) {
+      removed.push(before)
+    }
+  }
+  return { added, updated, removed, reassigned }
 }
 
-function announceKey(kind: 'added' | 'updated', workItem: YunxiaoWorkItem): string {
+function announceKey(
+  kind: AnnouncementKind,
+  workItem: YunxiaoWorkItem,
+  reassigned: ReadonlySet<string>
+): string {
   const account = workItem.accountId ?? ''
-  return kind === 'added'
-    ? `added::${account}::${workItem.serialNumber}`
-    : `updated::${account}::${workItem.serialNumber}::${workItem.updatedAt}::${workItem.status.name}`
+  // One reassignment reaches both watched lists — as a departure from Assigned
+  // and as an owner change in Created. Share a dedupe lane so it toasts once.
+  if (kind === 'removed' || (kind === 'updated' && reassigned.has(workItem.serialNumber))) {
+    return `reassigned::${account}::${workItem.serialNumber}`
+  }
+  if (kind === 'updated') {
+    return `updated::${account}::${workItem.serialNumber}::${workItem.updatedAt}::${workItem.status.name}::${assigneeUserId(workItem) ?? ''}`
+  }
+  return `${kind}::${account}::${workItem.serialNumber}`
+}
+
+function toastMessage(kind: AnnouncementKind, workItem: YunxiaoWorkItem): string {
+  if (kind === 'added') {
+    return translate(
+      'auto.components.TaskPage.yunxiao_toast_new_item',
+      'New {{value0}}: {{value1}}',
+      {
+        value0: workItem.workItemType.name,
+        value1: workItem.serialNumber
+      }
+    )
+  }
+  if (kind === 'removed') {
+    return translate(
+      'auto.components.TaskPage.yunxiao_toast_item_unassigned',
+      '{{value0}} is no longer assigned to you',
+      { value0: workItem.serialNumber }
+    )
+  }
+  return translate(
+    'auto.components.TaskPage.yunxiao_toast_item_updated',
+    '{{value0}} updated ({{value1}})',
+    {
+      value0: workItem.serialNumber,
+      value1: workItem.status.name
+    }
+  )
 }
 
 export function announceYunxiaoWorkItemListChanges(
@@ -77,19 +155,26 @@ export function announceYunxiaoWorkItemListChanges(
   const previous = snapshotsByListKey.get(listKey)
   snapshotsByListKey.set(
     listKey,
-    new Map(workItems.map((workItem) => [workItem.serialNumber, fingerprint(workItem)]))
+    new Map(workItems.map((workItem) => [workItem.serialNumber, workItem]))
   )
-  const { added, updated } = diffYunxiaoWorkItemSnapshot(previous, workItems)
+  const { added, updated, removed, reassigned } = diffYunxiaoWorkItemSnapshot(previous, workItems)
+  const reassignedSerials = new Set(reassigned)
+  const truncated = options.listLimit !== undefined && workItems.length >= options.listLimit
+  const departed = options.announceRemoved && !truncated ? removed : []
   const now = Date.now()
   for (const [key, at] of announcedAt) {
     if (now - at > ANNOUNCE_DEDUPE_TTL_MS) {
       announcedAt.delete(key)
     }
   }
-  const announcements: { kind: 'added' | 'updated'; workItem: YunxiaoWorkItem }[] = []
-  for (const kind of ['added', 'updated'] as const) {
-    for (const workItem of kind === 'added' ? added : updated) {
-      const key = announceKey(kind, workItem)
+  const announcements: { kind: AnnouncementKind; workItem: YunxiaoWorkItem }[] = []
+  for (const [kind, changed] of [
+    ['added', added],
+    ['updated', updated],
+    ['removed', departed]
+  ] as const) {
+    for (const workItem of changed) {
+      const key = announceKey(kind, workItem, reassignedSerials)
       if (announcedAt.has(key)) {
         continue
       }
@@ -120,23 +205,10 @@ export function announceYunxiaoWorkItemListChanges(
     return
   }
   for (const { kind, workItem } of announcements) {
-    toast.info(
-      kind === 'added'
-        ? translate(
-            'auto.components.TaskPage.yunxiao_toast_new_item',
-            'New {{value0}}: {{value1}}',
-            {
-              value0: workItem.workItemType.name,
-              value1: workItem.serialNumber
-            }
-          )
-        : translate(
-            'auto.components.TaskPage.yunxiao_toast_item_updated',
-            '{{value0}} updated ({{value1}})',
-            { value0: workItem.serialNumber, value1: workItem.status.name }
-          ),
-      { description: workItem.title, ...viewAction }
-    )
+    toast.info(toastMessage(kind, workItem), {
+      description: workItem.title,
+      ...viewAction
+    })
   }
 }
 

@@ -1863,6 +1863,7 @@
         "yunxiao_view_fix_tooltip": "View fix",
         "yunxiao_toast_new_item": "New {{value0}}: {{value1}}",
         "yunxiao_toast_item_updated": "{{value0}} updated ({{value1}})",
+        "yunxiao_toast_item_unassigned": "{{value0}} is no longer assigned to you",
         "yunxiao_toast_bulk_changes": "{{value0}} 云效 work items changed",
         "yunxiao_toast_fix_working": "{{value0}} fix is running again",
         "yunxiao_toast_fix_attention": "{{value0}} fix needs your input",

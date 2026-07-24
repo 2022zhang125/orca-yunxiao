@@ -1,5 +1,9 @@
 import type { AppState } from '../types'
-import type { YunxiaoAccountSelection, YunxiaoWorkItem } from '../../../../shared/types'
+import type {
+  YunxiaoAccountSelection,
+  YunxiaoWorkItem,
+  YunxiaoWorkItemFilter
+} from '../../../../shared/types'
 import { isIntegrationCredentialDecryptionError } from '../../../../shared/integration-credential-errors'
 import { announceYunxiaoWorkItemListChanges } from '@/lib/yunxiao-work-item-change-toasts'
 import {
@@ -52,6 +56,9 @@ export type YunxiaoListReadArgs = {
   options: YunxiaoReadOptions | undefined
   cacheSuffix: string
   operation: string
+  // Preset lists only: search results churn with the query, so an item
+  // "appearing" there is a match, not a teammate's change worth a toast.
+  announce?: { filter: YunxiaoWorkItemFilter; limit: number }
   run: (
     scope: ReturnType<typeof getYunxiaoReadScope>,
     accountId: YunxiaoAccountSelection | null
@@ -59,7 +66,7 @@ export type YunxiaoListReadArgs = {
 }
 
 export function readYunxiaoWorkItemList(args: YunxiaoListReadArgs): Promise<YunxiaoWorkItem[]> {
-  const { set, get, options, cacheSuffix, operation, run } = args
+  const { set, get, options, cacheSuffix, operation, announce, run } = args
   const scope = getYunxiaoReadScope(get().settings, options?.sourceContext)
   const { contextKey } = scope
   const accountId = getSelectedAccountId(get().yunxiaoStatus)
@@ -95,10 +102,12 @@ export function readYunxiaoWorkItemList(args: YunxiaoListReadArgs): Promise<Yunx
             [cacheKey]: { data: workItems, fetchedAt: Date.now() }
           })
         }))
-        // Preset lists only: search results churn with the query, so an item
-        // "appearing" there is a match, not a teammate's change worth a toast.
-        if (cacheSuffix.startsWith('list::')) {
+        if (announce) {
           announceYunxiaoWorkItemListChanges(cacheKey, workItems, {
+            // Only the assigned list loses an item when its owner changes; in
+            // the others a disappearance is a deletion or a slice, not news.
+            announceRemoved: announce.filter === 'assigned',
+            listLimit: announce.limit,
             // The jump stays inside Orca — raise this window, navigate, and
             // re-read. Refresh is part of it: the toast reports a change the
             // list's cached read predates, so it must not land on stale rows.

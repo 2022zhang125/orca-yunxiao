@@ -185,6 +185,7 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
       options,
       cacheSuffix: `list::${filter}::${limit}`,
       operation: 'listYunxiaoWorkItems',
+      announce: { filter, limit },
       run: (scope, accountId) => yunxiaoListWorkItems(scope.settings, filter, limit, accountId)
     }),
 

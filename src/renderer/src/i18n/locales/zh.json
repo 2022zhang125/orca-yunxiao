@@ -1840,6 +1840,7 @@
         "yunxiao_view_fix_tooltip": "查看修复",
         "yunxiao_toast_new_item": "新增{{value0}}：{{value1}}",
         "yunxiao_toast_item_updated": "{{value0}} 已更新（{{value1}}）",
+        "yunxiao_toast_item_unassigned": "{{value0}} 已不再指派给你",
         "yunxiao_toast_bulk_changes": "{{value0}} 个云效工作项有变化",
         "yunxiao_toast_fix_working": "{{value0}} 修复继续进行中",
         "yunxiao_toast_fix_attention": "{{value0}} 修复需要你处理",
