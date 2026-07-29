@@ -17,7 +17,6 @@ export const YUNXIAO_FIX_PHASE_SETTLE_MS = 4_000
 export type YunxiaoFixPhaseObservation = {
   /** `null` when the rows carry no evidence, so the last phase stands. */
   phase: YunxiaoFixPhase | null
-  cleanCompletion: boolean
 }
 
 /** One workspace owns one phase toast; a newer phase replaces it, not stacks. */
@@ -38,10 +37,7 @@ export function observeYunxiaoFixPhase(
   states: readonly AgentDotState[]
 ): YunxiaoFixPhaseObservation {
   if (states.length === 0) {
-    return { phase: null, cleanCompletion: false }
+    return { phase: null }
   }
-  const phase = summarizeFixPhase(states)
-  // 'done' also covers failed/interrupted runs; only a run where every agent
-  // actually finished is worth watching for a merge.
-  return { phase, cleanCompletion: phase === 'done' && states.every((state) => state === 'done') }
+  return { phase: summarizeFixPhase(states) }
 }

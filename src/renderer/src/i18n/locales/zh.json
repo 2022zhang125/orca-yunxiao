@@ -1844,9 +1844,7 @@
         "yunxiao_toast_bulk_changes": "{{value0}} 个云效工作项有变化",
         "yunxiao_toast_fix_working": "{{value0}} 修复继续进行中",
         "yunxiao_toast_fix_attention": "{{value0}} 修复需要你处理",
-        "yunxiao_toast_fix_done": "{{value0}} 修复已完成，去查看并合并分支",
-        "yunxiao_toast_fix_merged_removed": "{{value0}} 分支已合并，修复工作区已删除",
-        "yunxiao_toast_fix_cleanup_failed": "{{value0}} 修复工作区删除失败：{{value1}}"
+        "yunxiao_toast_fix_done": "{{value0}} 修复已完成，去查看并合并分支"
       },
       "Terminal": {
         "73768427cf": "关闭",

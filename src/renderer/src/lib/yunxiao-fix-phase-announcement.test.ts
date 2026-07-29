@@ -5,30 +5,18 @@ describe('yunxiao fix phase observation', () => {
   it('reports no phase when the rows carry no evidence', () => {
     // Tabs rehydrating, a pruned retained snapshot, or a closed terminal empties
     // the list for a tick; announcing that flipped the fix to "running again".
-    expect(observeYunxiaoFixPhase([])).toEqual({ phase: null, cleanCompletion: false })
+    expect(observeYunxiaoFixPhase([])).toEqual({ phase: null })
   })
 
   it('carries the phase its rows show', () => {
-    expect(observeYunxiaoFixPhase(['working'])).toEqual({
-      phase: 'working',
-      cleanCompletion: false
-    })
-    expect(observeYunxiaoFixPhase(['working', 'waiting'])).toEqual({
-      phase: 'attention',
-      cleanCompletion: false
-    })
+    expect(observeYunxiaoFixPhase(['working'])).toEqual({ phase: 'working' })
+    expect(observeYunxiaoFixPhase(['working', 'waiting'])).toEqual({ phase: 'attention' })
   })
 
-  it('only calls a run clean when every agent ended done', () => {
-    expect(observeYunxiaoFixPhase(['done', 'done'])).toEqual({
-      phase: 'done',
-      cleanCompletion: true
-    })
-    expect(observeYunxiaoFixPhase(['done', 'interrupted'])).toEqual({
-      phase: 'done',
-      cleanCompletion: false
-    })
-    expect(observeYunxiaoFixPhase(['idle'])).toEqual({ phase: 'done', cleanCompletion: false })
+  it('reads a workspace whose sessions all ended as finished', () => {
+    expect(observeYunxiaoFixPhase(['done', 'done'])).toEqual({ phase: 'done' })
+    expect(observeYunxiaoFixPhase(['done', 'interrupted'])).toEqual({ phase: 'done' })
+    expect(observeYunxiaoFixPhase(['idle'])).toEqual({ phase: 'done' })
   })
 })
 
