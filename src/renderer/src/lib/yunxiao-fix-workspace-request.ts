@@ -28,18 +28,21 @@ export function buildYunxiaoFixPrompt(workItem: YunxiaoWorkItem): string {
 }
 
 /**
- * Pins the fix launch to Claude's auto-accept-edits mode — file edits run
- * unprompted, commands still ask, which is what the row's attention state
- * surfaces. Deliberately replaces any configured stance: the global default is
- * often bypass-everything, and these launches must be auto mode, not bypass.
+ * Pins the fix launch to fully unattended permissions — edits, commands, and
+ * installs all run without a prompt. A batch fix is launched from the task list
+ * and nobody watches the panes, so any approval prompt stalls that workspace
+ * indefinitely; the row's attention state is the surface for what needs a human.
+ *
+ * Replaces whatever stance is configured (including a narrower
+ * `--permission-mode`) so the batch can't inherit one that blocks on commands.
  */
-export function withClaudeAutoAcceptEdits(args: string): string {
+export function withClaudeSkipPermissions(args: string): string {
   const stripped = args
     .replace(/--dangerously-skip-permissions\b/g, '')
     .replace(/--permission-mode(?:[= ]\S+)?/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-  return `${stripped} --permission-mode acceptEdits`.trim()
+  return `${stripped} --dangerously-skip-permissions`.trim()
 }
 
 /** Branch/workspace seed: `fix-demo-8`, kept git-safe for any serial format. */
@@ -108,7 +111,7 @@ export function buildYunxiaoFixWorkspaceRequest(args: {
     agent: YUNXIAO_FIX_AGENT,
     prompt,
     cmdOverrides: store.settings?.agentCmdOverrides ?? {},
-    agentArgs: withClaudeAutoAcceptEdits(
+    agentArgs: withClaudeSkipPermissions(
       resolveTuiAgentLaunchArgs(YUNXIAO_FIX_AGENT, store.settings?.agentDefaultArgs)
     ),
     agentEnv: resolveTuiAgentLaunchEnv(YUNXIAO_FIX_AGENT, store.settings?.agentDefaultEnv),

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildYunxiaoFixPrompt,
   buildYunxiaoFixWorkspaceName,
-  withClaudeAutoAcceptEdits
+  withClaudeSkipPermissions
 } from './yunxiao-fix-workspace-request'
 import type { YunxiaoWorkItem } from '../../../shared/types'
 
@@ -33,23 +33,32 @@ describe('yunxiao one-click fix request', () => {
   })
 })
 
-describe('claude auto-accept mode for fixes', () => {
-  it('turns auto-accept edits on for a launch with no permission stance', () => {
-    expect(withClaudeAutoAcceptEdits('')).toBe('--permission-mode acceptEdits')
-    expect(withClaudeAutoAcceptEdits('--model opus')).toBe(
-      '--model opus --permission-mode acceptEdits'
+describe('claude unattended permissions for fixes', () => {
+  it('skips permissions for a launch with no configured stance', () => {
+    expect(withClaudeSkipPermissions('')).toBe('--dangerously-skip-permissions')
+    expect(withClaudeSkipPermissions('--model opus')).toBe(
+      '--model opus --dangerously-skip-permissions'
     )
   })
 
-  it('replaces a bypass stance with auto-accept — fixes run auto mode, not bypass', () => {
-    expect(withClaudeAutoAcceptEdits('--dangerously-skip-permissions')).toBe(
-      '--permission-mode acceptEdits'
+  it('replaces a narrower configured stance so a batch cannot block on a prompt', () => {
+    expect(withClaudeSkipPermissions('--permission-mode acceptEdits')).toBe(
+      '--dangerously-skip-permissions'
     )
-    expect(withClaudeAutoAcceptEdits('--permission-mode bypassPermissions')).toBe(
-      '--permission-mode acceptEdits'
+    expect(withClaudeSkipPermissions('--permission-mode plan')).toBe(
+      '--dangerously-skip-permissions'
     )
-    expect(withClaudeAutoAcceptEdits('--model opus --permission-mode plan')).toBe(
-      '--model opus --permission-mode acceptEdits'
+    expect(withClaudeSkipPermissions('--model opus --permission-mode acceptEdits')).toBe(
+      '--model opus --dangerously-skip-permissions'
+    )
+  })
+
+  it('does not duplicate the flag when it is already configured', () => {
+    expect(withClaudeSkipPermissions('--dangerously-skip-permissions')).toBe(
+      '--dangerously-skip-permissions'
+    )
+    expect(withClaudeSkipPermissions('--model opus --dangerously-skip-permissions')).toBe(
+      '--model opus --dangerously-skip-permissions'
     )
   })
 })
