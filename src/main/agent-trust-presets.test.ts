@@ -38,8 +38,12 @@ vi.mock('node:os', async () => {
   }
 })
 
-const { markCodexProjectTrusted, markCopilotFolderTrusted, markCursorWorkspaceTrusted } =
-  await import('./agent-trust-presets')
+const {
+  markClaudeProjectMcpTrusted,
+  markCodexProjectTrusted,
+  markCopilotFolderTrusted,
+  markCursorWorkspaceTrusted
+} = await import('./agent-trust-presets')
 
 beforeEach(() => {
   testState.fakeHomeDir = mkdtempSync(join(tmpdir(), 'orca-trust-presets-'))
@@ -272,6 +276,69 @@ describe('markCodexProjectTrusted', () => {
       expect(runtimeWritten).toContain('notes = "keep-runtime"')
       expect(runtimeWritten).toContain('trust_level = "trusted"')
       expect(runtimeWritten).not.toContain('trust_level = "untrusted"')
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('markClaudeProjectMcpTrusted', () => {
+  const settingsPathFor = (workspace: string): string =>
+    join(workspace, '.claude', 'settings.local.json')
+
+  it('pre-approves the project MCP servers in the workspace settings', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-claude-ws-'))
+    try {
+      markClaudeProjectMcpTrusted(workspace)
+      const parsed = JSON.parse(readFileSync(settingsPathFor(workspace), 'utf-8'))
+      expect(parsed.enableAllProjectMcpServers).toBe(true)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves unrelated settings already in the file', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-claude-ws-'))
+    try {
+      mkdirSync(join(workspace, '.claude'), { recursive: true })
+      writeFileSync(
+        settingsPathFor(workspace),
+        JSON.stringify({ permissions: { allow: ['Bash(ls)'] } }),
+        'utf-8'
+      )
+      markClaudeProjectMcpTrusted(workspace)
+      const parsed = JSON.parse(readFileSync(settingsPathFor(workspace), 'utf-8'))
+      expect(parsed.enableAllProjectMcpServers).toBe(true)
+      expect(parsed.permissions).toEqual({ allow: ['Bash(ls)'] })
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves an explicit opt-out alone — the user turned it off deliberately', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-claude-ws-'))
+    try {
+      mkdirSync(join(workspace, '.claude'), { recursive: true })
+      writeFileSync(
+        settingsPathFor(workspace),
+        JSON.stringify({ enableAllProjectMcpServers: false }),
+        'utf-8'
+      )
+      markClaudeProjectMcpTrusted(workspace)
+      const parsed = JSON.parse(readFileSync(settingsPathFor(workspace), 'utf-8'))
+      expect(parsed.enableAllProjectMcpServers).toBe(false)
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to overwrite a corrupted settings file', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'orca-claude-ws-'))
+    try {
+      mkdirSync(join(workspace, '.claude'), { recursive: true })
+      writeFileSync(settingsPathFor(workspace), '{ not json', 'utf-8')
+      markClaudeProjectMcpTrusted(workspace)
+      expect(readFileSync(settingsPathFor(workspace), 'utf-8')).toBe('{ not json')
     } finally {
       rmSync(workspace, { recursive: true, force: true })
     }

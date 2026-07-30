@@ -5,7 +5,7 @@ import { writeFileAtomically } from './codex-accounts/fs-utils'
 import { getOrcaManagedCodexHomePath } from './codex/codex-home-paths'
 import { upsertProjectTrustLevel } from './codex/config-toml-trust'
 
-export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex'
+export type AgentTrustPreset = 'cursor' | 'copilot' | 'codex' | 'claude'
 
 /**
  * Pre-mark a workspace as trusted for cursor-agent, GitHub Copilot CLI, or
@@ -115,6 +115,45 @@ export function markCodexProjectTrusted(workspacePath: string): void {
   // Why: Orca-launched Codex runs with an Orca-owned CODEX_HOME, so the trust
   // preset must also update the runtime config Codex will actually read.
   upsertProjectTrustLevel(join(getOrcaManagedCodexHomePath(), 'config.toml'), absPath, 'trusted')
+}
+
+/**
+ * Claude prompts "Use the MCP servers from .mcp.json?" the first time it runs in
+ * a directory it has no approval record for — and a fresh worktree is always
+ * such a directory. Its `enableAllProjectMcpServers` setting is the documented
+ * pre-approval, so write it into the workspace's own
+ * `.claude/settings.local.json` (the file Claude writes there itself once the
+ * user accepts).
+ *
+ * Scope note: this approves only the servers the repo declares in its own
+ * `.mcp.json` — narrower than the cursor/copilot presets above, which trust the
+ * whole workspace. Settings already present are preserved, and an existing
+ * explicit `false` is left alone: the user turned it off deliberately.
+ */
+export function markClaudeProjectMcpTrusted(workspacePath: string): void {
+  const settingsDir = join(canonicalize(workspacePath), '.claude')
+  const settingsPath = join(settingsDir, 'settings.local.json')
+  let settings: Record<string, unknown> = {}
+  try {
+    if (existsSync(settingsPath)) {
+      const parsed = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        settings = parsed as Record<string, unknown>
+      }
+    }
+  } catch {
+    // Why: a corrupted settings.local.json is the user's to fix — refuse to
+    // overwrite it. Claude will rewrite it after a manual approval.
+    return
+  }
+  if ('enableAllProjectMcpServers' in settings) {
+    return
+  }
+  settings.enableAllProjectMcpServers = true
+  if (!existsSync(settingsDir)) {
+    mkdirSync(settingsDir, { recursive: true })
+  }
+  writeFileAtomically(settingsPath, `${JSON.stringify(settings, null, 2)}\n`)
 }
 
 function resolveCodexProjectTrustRoot(workspacePath: string): string {

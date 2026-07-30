@@ -159,4 +159,57 @@ describe('markRemoteAgentWorkspaceTrusted', () => {
 
     expect(fsProvider.writeFile).not.toHaveBeenCalled()
   })
+
+  it('writes Claude MCP approval into the remote workspace, not the remote home', async () => {
+    const fsProvider = makeFsProvider()
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'claude',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo/worktree'
+    })
+
+    expect(fsProvider.createDir).toHaveBeenCalledWith('/real/repo/worktree/.claude')
+    expect(fsProvider.writeFile).toHaveBeenCalledWith(
+      '/real/repo/worktree/.claude/settings.local.json',
+      expect.any(String)
+    )
+    const written = fsProvider.writeFile.mock.calls.at(0)?.at(1)
+    expect(JSON.parse(String(written))).toEqual({ enableAllProjectMcpServers: true })
+  })
+
+  it('writes Claude MCP approval even when the remote home cannot be resolved', async () => {
+    const fsProvider = makeFsProvider()
+    mocks.getActiveMultiplexer.mockReturnValue({
+      request: vi.fn(async () => ({ resolvedPath: 'relative/home' }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'claude',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo/worktree'
+    })
+
+    expect(fsProvider.writeFile).toHaveBeenCalled()
+  })
+
+  it('keeps an explicit remote opt-out and unrelated Claude settings', async () => {
+    const fsProvider = makeFsProvider({
+      readFile: vi.fn(async () => ({
+        content: JSON.stringify({ enableAllProjectMcpServers: false }),
+        isBinary: false
+      }))
+    })
+    mocks.getSshFilesystemProvider.mockReturnValue(fsProvider)
+
+    await markRemoteAgentWorkspaceTrusted({
+      preset: 'claude',
+      connectionId: 'ssh-1',
+      workspacePath: '/repo/worktree'
+    })
+
+    expect(fsProvider.writeFile).not.toHaveBeenCalled()
+  })
 })

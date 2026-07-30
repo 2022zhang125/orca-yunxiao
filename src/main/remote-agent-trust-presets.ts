@@ -13,9 +13,23 @@ export async function markRemoteAgentWorkspaceTrusted(args: {
   connectionId: string
   workspacePath: string
 }): Promise<void> {
-  const home = await resolveRemoteHome(args.connectionId)
   const fsProvider = getSshFilesystemProvider(args.connectionId)
-  if (!home || !fsProvider) {
+  if (!fsProvider) {
+    return
+  }
+  // Why: the claude preset writes inside the workspace, so it needs no remote
+  // home — resolving one would fail the whole write on a host where `~` can't
+  // be resolved but the worktree is perfectly writable.
+  if (args.preset === 'claude') {
+    await markRemoteClaudeProjectMcpTrusted(
+      fsProvider,
+      await canonicalizeRemoteWorkspacePath(fsProvider, args.workspacePath)
+    )
+    return
+  }
+
+  const home = await resolveRemoteHome(args.connectionId)
+  if (!home) {
     return
   }
 
@@ -117,6 +131,33 @@ async function markRemoteCursorWorkspaceTrusted(
     trustFile,
     `${JSON.stringify({ trustedAt: new Date().toISOString(), workspacePath }, null, 2)}\n`
   )
+}
+
+async function markRemoteClaudeProjectMcpTrusted(
+  fsProvider: IFilesystemProvider,
+  workspacePath: string
+): Promise<void> {
+  const settingsDir = `${workspacePath.replace(/\/$/, '')}/.claude`
+  const settingsPath = `${settingsDir}/settings.local.json`
+  const raw = await readRemoteTextFile(fsProvider, settingsPath)
+  let settings: Record<string, unknown> = {}
+  if (raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        settings = parsed as Record<string, unknown>
+      }
+    } catch {
+      return
+    }
+  }
+  // An explicit setting either way is the user's decision; don't override it.
+  if ('enableAllProjectMcpServers' in settings) {
+    return
+  }
+  settings.enableAllProjectMcpServers = true
+  await fsProvider.createDir(settingsDir)
+  await fsProvider.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`)
 }
 
 async function markRemoteCopilotFolderTrusted(

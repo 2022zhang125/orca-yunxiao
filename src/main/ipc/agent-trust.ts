@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import {
   type AgentTrustPreset,
+  markClaudeProjectMcpTrusted,
   markCodexProjectTrusted,
   markCopilotFolderTrusted,
   markCursorWorkspaceTrusted
@@ -10,7 +11,8 @@ import { markRemoteAgentWorkspaceTrusted } from '../remote-agent-trust-presets'
 /**
  * Why: cursor-agent, GitHub Copilot CLI, and Codex gate first-launch in an
  * unfamiliar directory behind a "Do you trust this folder?" menu that consumes
- * keystrokes (numbered options / single-letter shortcuts). Orca's draft-URL
+ * keystrokes (numbered options / single-letter shortcuts); Claude gates on the
+ * equivalent "use the MCP servers from .mcp.json?" prompt. Orca's draft-URL
  * paste flow needs the input box, not the menu, so before Orca spawns the
  * agent it asks main to write the same trust artifacts the agents write
  * after the user accepts. Best-effort: any IO error is swallowed so a failed
@@ -43,6 +45,8 @@ export function registerAgentTrustHandlers(): void {
           markCopilotFolderTrusted(args.workspacePath)
         } else if (args.preset === 'codex') {
           markCodexProjectTrusted(args.workspacePath)
+        } else if (args.preset === 'claude') {
+          markClaudeProjectMcpTrusted(args.workspacePath)
         }
       } catch {
         // Best-effort: see Why above. The user can still accept the trust

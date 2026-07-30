@@ -106,6 +106,7 @@ import { createSequencedSetupAgentCommands } from '../../shared/setup-agent-sequ
 import { shouldWaitForSetupBeforeAgentStartup } from '../../shared/setup-agent-startup-policy'
 import { createWorktreeCreateTimingRecorder } from '../worktree-create-timing'
 import {
+  markClaudeProjectMcpTrusted,
   markCodexProjectTrusted,
   markCopilotFolderTrusted,
   markCursorWorkspaceTrusted
@@ -279,6 +280,8 @@ async function spawnLocalStartupAndSetupTerminals(args: {
           markCopilotFolderTrusted(worktree.path)
         } else if (preset === 'codex') {
           markCodexProjectTrusted(worktree.path)
+        } else if (preset === 'claude') {
+          markClaudeProjectMcpTrusted(worktree.path)
         }
       } catch {
         // Best-effort: launch still proceeds and the agent can ask interactively.
