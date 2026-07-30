@@ -12,11 +12,17 @@ import type { AgentStartedTelemetry } from '@/lib/worktree-activation'
 import type { TaskSourceContext, WorkspaceRunContext } from '../../../shared/task-source-context'
 
 /** Two-phase status reported by the main process while a worktree is created.
+ *  `queued` covers waiting for a slot in the bounded background-create queue;
  *  `preparing` covers renderer-side preflight before `createWorktree` starts;
  *  `fetching` covers the base-ref git fetch; `creating` covers `git worktree
  *  add`. Remote/runtime creates may skip git phases; VM recipes add a
  *  provider-provisioning phase before the runtime worktree exists. */
-export type WorktreeCreationPhase = 'preparing' | 'provisioning-vm' | 'fetching' | 'creating'
+export type WorktreeCreationPhase =
+  | 'queued'
+  | 'preparing'
+  | 'provisioning-vm'
+  | 'fetching'
+  | 'creating'
 
 export type WorktreeCreationProgressMode = 'stepped' | 'indeterminate'
 
@@ -122,12 +128,25 @@ export type PendingWorktreeCreation = {
   request: WorktreeCreationRequest
 }
 
+/** Phase a create should report the moment it starts doing work. VM recipes must
+ *  provision before a worktree can exist, so they lead with that step. */
+export function getInitialWorktreeCreationPhase(
+  request: Pick<WorktreeCreationRequest, 'ephemeralVmRecipe' | 'ephemeralVmRuntimeId'>
+): WorktreeCreationPhase {
+  return request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId ? 'provisioning-vm' : 'fetching'
+}
+
 /** Human-readable progress line for an in-flight create, shared by the in-frame
  *  loader and the sidebar row so the two never drift. Caller handles the error
  *  case; this only covers the in-progress states. */
 export function getCreationProgressLabel(
   entry: Pick<PendingWorktreeCreation, 'phase' | 'indeterminate'>
 ): string {
+  // Why before the indeterminate check: a queued create has not started on any
+  // host yet, so "setting up" would claim work that is not running.
+  if (entry.phase === 'queued') {
+    return 'Waiting to start…'
+  }
   if (entry.phase === 'provisioning-vm') {
     return 'Provisioning VM…'
   }

@@ -81,6 +81,7 @@ import {
   ensureWorktreeHasInitialTerminal
 } from '@/lib/worktree-activation'
 import { queueNewWorkspaceTerminalFocus } from '@/lib/new-workspace-terminal-focus'
+import { resetBackgroundWorktreeCreationQueueForTests } from '@/lib/background-worktree-creation-queue'
 import {
   beginBackgroundWorktreePreparation,
   continueBackgroundWorktreeCreation,
@@ -91,6 +92,9 @@ const FLOW_SOURCE = readFileSync(join(__dirname, 'worktree-creation-flow.ts'), '
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Why: the default createWorktree mock never settles, so a create from a prior
+  // test would hold a background-queue slot and leave the next one queued.
+  resetBackgroundWorktreeCreationQueueForTests()
   store.settings.activeRuntimeEnvironmentId = null
   store.activeView = 'terminal'
   store.activePendingCreationId = 'creation-1'

@@ -20,11 +20,13 @@ import {
   getWorkspaceCreateErrorToastMessage
 } from '@/lib/workspace-create-error-format'
 import type { CreateWorktreeResult } from '../../../shared/types'
-import type {
-  WorktreeCreationPhase,
-  WorktreeCreationRequest
+import {
+  getInitialWorktreeCreationPhase,
+  type WorktreeCreationPhase,
+  type WorktreeCreationRequest
 } from '@/lib/pending-worktree-creation'
 import { stampLinkedYunxiaoWorkItem } from '@/lib/worktree-creation-yunxiao-link'
+import { queueBackgroundWorktreeCreation } from '@/lib/background-worktree-creation-queue'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 
@@ -64,10 +66,6 @@ function getWorktreeCreationIndeterminate(request: WorktreeCreationRequest): boo
     return request.worktreeCreateProgressMode === 'indeterminate'
   }
   return getActiveRuntimeTarget(useAppStore.getState().settings).kind !== 'local'
-}
-
-function getInitialWorktreeCreationPhase(request: WorktreeCreationRequest): WorktreeCreationPhase {
-  return request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId ? 'provisioning-vm' : 'fetching'
 }
 
 // Why: activePendingCreationId can outlive the terminal route when the user
@@ -309,7 +307,15 @@ export function runBackgroundWorktreeCreation(request: WorktreeCreationRequest):
   // client over plain HTTP). createBrowserUuid falls back to getRandomValues.
   const creationId = createBrowserUuid()
   revealPendingCreation(creationId, request, getInitialWorktreeCreationPhase(request))
-  void executeWorktreeCreation(creationId, request)
+  queueWorktreeCreation(creationId, request)
+}
+
+/** Hands a create to the bounded background queue so a batch launch cannot fan
+ *  out one checkout + agent spawn per ticked item at once. */
+function queueWorktreeCreation(creationId: string, request: WorktreeCreationRequest): void {
+  queueBackgroundWorktreeCreation(creationId, request, () =>
+    executeWorktreeCreation(creationId, request)
+  )
 }
 
 /** Stage a pending entry before async preflight so the UI shows immediate progress. */
@@ -347,7 +353,7 @@ export function continueBackgroundWorktreeCreation(
     store.setActiveView('terminal')
     store.setSidebarOpen(true)
   }
-  void executeWorktreeCreation(creationId, request)
+  queueWorktreeCreation(creationId, request)
   return true
 }
 
@@ -361,15 +367,12 @@ export function retryBackgroundWorktreeCreation(creationId: string): void {
   store.updatePendingWorktreeCreation(creationId, {
     status: 'creating',
     startedAt: Date.now(),
-    phase:
-      entry.request.ephemeralVmRecipe && !entry.request.ephemeralVmRuntimeId
-        ? 'provisioning-vm'
-        : 'fetching',
+    phase: getInitialWorktreeCreationPhase(entry.request),
     error: undefined,
     provisioningLog: undefined
   })
   store.setActivePendingWorktreeCreation(creationId)
   store.setActiveView('terminal')
   store.setSidebarOpen(true)
-  void executeWorktreeCreation(creationId, entry.request)
+  queueWorktreeCreation(creationId, entry.request)
 }
