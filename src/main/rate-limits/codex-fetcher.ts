@@ -10,6 +10,14 @@ import { homedir } from 'node:os'
 import { cancelUnreadResponseBody } from '../lib/unread-response-body'
 import { join } from 'node:path'
 import { probeCodexAuthPresence } from './codex-auth-presence'
+import { extractClaudePtyResetMetadata } from './claude-pty-reset-parser'
+import {
+  classifyCodexRateLimitWindows,
+  CODEX_SESSION_WINDOW_MINUTES,
+  CODEX_WEEKLY_WINDOW_MINUTES,
+  type CodexRateLimitWindowsSnapshot,
+  type CodexRateWindowSnapshot
+} from './codex-rate-limit-window-classification'
 import { resolveCodexCommand } from '../codex-cli/command'
 import { withMacTailscaleDnsHint } from '../network/macos-tailscale-dns-diagnostic'
 import { getCmdExePath, getSpawnArgsForWindows } from '../win32-utils'
@@ -32,6 +40,15 @@ import {
 const RPC_TIMEOUT_MS = 10_000
 const WSL_RPC_TIMEOUT_MS = 25_000
 const PTY_TIMEOUT_MS = 15_000
+// Why: codex ≥0.145 renders a '›' composer with placeholder text after it, so a
+// prompt-anchored send can never fire; nudge /status after a short boot grace.
+const PTY_STATUS_NUDGE_MS = 2_500
+// Why: '/status\r' in one write coalesces into a paste-like chunk and the TUI
+// inserts the newline instead of submitting; Enter must be its own keypress.
+const PTY_STATUS_ENTER_DELAY_MS = 350
+// Why: slow hosts (WSL/SSH) can drop the first Enter while the TUI is still
+// booting; one spare Enter is a no-op on an empty, ready composer.
+const PTY_STATUS_ENTER_RETRY_MS = 3_000
 const BACKEND_TIMEOUT_MS = 10_000
 // Why: redeeming a reset credit is an explicit user action, not a poll — allow more time for a slow backend.
 const REDEEM_BACKEND_TIMEOUT_MS = 30_000
@@ -53,12 +70,6 @@ type RpcResponse = {
   error?: { code: number; message: string }
 }
 
-type RpcRateWindow = {
-  usedPercent?: number
-  windowDurationMins?: number
-  resetsAt?: number // Unix seconds
-}
-
 type RateLimitResetCredits = {
   availableCount: number
   totalEarnedCount?: number
@@ -70,14 +81,9 @@ type RateLimitResetCredits = {
   }[]
 }
 
-type RpcRateLimitsResult = {
-  primary?: RpcRateWindow
-  secondary?: RpcRateWindow
-}
-
 // Why: the Codex app-server wraps rate limit data as { rateLimits: { primary, secondary, ... } }.
 type RpcRateLimitsResponse = {
-  rateLimits?: RpcRateLimitsResult
+  rateLimits?: CodexRateLimitWindowsSnapshot | null
   rateLimitResetCredits?: {
     availableCount?: number
     totalEarnedCount?: number
@@ -286,6 +292,12 @@ function mapBackendRateLimitResetCredits(
   }
 }
 
+function hasCompleteRateLimitResetCredits(
+  credits: RateLimitResetCredits | null | undefined
+): boolean {
+  return Boolean(credits && (credits.availableCount === 0 || credits.nextExpiresAt != null))
+}
+
 function createBackendRequestSignal(
   callerSignal?: AbortSignal,
   timeoutMs = BACKEND_TIMEOUT_MS
@@ -386,8 +398,7 @@ async function withBackendRateLimitResetCredits(
   if (
     options?.signal?.aborted ||
     limits.provider !== 'codex' ||
-    (limits.rateLimitResetCredits?.nextExpiresAt !== undefined &&
-      limits.rateLimitResetCredits.nextExpiresAt !== null)
+    hasCompleteRateLimitResetCredits(limits.rateLimitResetCredits)
   ) {
     return limits
   }
@@ -448,7 +459,7 @@ export async function consumeCodexRateLimitResetCredit(options: {
 }
 
 function mapRpcWindow(
-  raw: RpcRateWindow | undefined,
+  raw: CodexRateWindowSnapshot | null | undefined,
   expectedWindowMinutes: number
 ): RateLimitWindow | null {
   if (!raw || typeof raw.usedPercent !== 'number' || !Number.isFinite(raw.usedPercent)) {
@@ -476,34 +487,37 @@ function mapRpcWindow(
 
   return {
     usedPercent: Math.min(100, Math.max(0, raw.usedPercent)),
-    // Why: windowDurationMins reports remaining minutes, but the UI needs the fixed bucket duration for "5h"/"wk" labels.
+    // Why: older app-server builds can report canonical bucket lengths off by one minute.
     windowMinutes: expectedWindowMinutes,
     resetsAt,
     resetDescription
   }
 }
 
-function mapBackendUsageWindow(
-  raw: BackendRateLimitWindow | null | undefined,
-  fallbackWindowMinutes: number
-): RateLimitWindow | null {
-  const limitWindowSeconds = raw?.limit_window_seconds
-  // Why: match Codex backend-client's window_minutes_from_seconds — actual bucket duration, rounding partial minutes up.
-  const windowMinutes =
+function backendWindowToSnapshot(
+  raw: BackendRateLimitWindow | null | undefined
+): CodexRateWindowSnapshot | null {
+  if (!raw) {
+    return null
+  }
+  const limitWindowSeconds = raw.limit_window_seconds
+  const windowDurationMins =
     typeof limitWindowSeconds === 'number' &&
     Number.isFinite(limitWindowSeconds) &&
     limitWindowSeconds > 0
       ? Math.ceil(limitWindowSeconds / 60)
-      : fallbackWindowMinutes
-  return mapRpcWindow(
-    raw
-      ? {
-          usedPercent: raw.used_percent,
-          resetsAt: raw.reset_at
-        }
-      : undefined,
-    windowMinutes
-  )
+      : undefined
+  return { usedPercent: raw.used_percent, windowDurationMins, resetsAt: raw.reset_at }
+}
+
+function snapshotWindowMinutes(
+  snapshot: CodexRateWindowSnapshot | null,
+  fallbackWindowMinutes: number
+): number {
+  const duration = snapshot?.windowDurationMins
+  return typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+    ? duration
+    : fallbackWindowMinutes
 }
 
 async function fetchViaBackend(
@@ -528,10 +542,20 @@ async function fetchViaBackend(
   if (typeof payload.plan_type !== 'string') {
     return null
   }
+  const classified = classifyCodexRateLimitWindows({
+    primary: backendWindowToSnapshot(payload.rate_limit?.primary_window),
+    secondary: backendWindowToSnapshot(payload.rate_limit?.secondary_window)
+  })
   return {
     provider: 'codex',
-    session: mapBackendUsageWindow(payload.rate_limit?.primary_window, 300),
-    weekly: mapBackendUsageWindow(payload.rate_limit?.secondary_window, 10080),
+    session: mapRpcWindow(
+      classified.session,
+      snapshotWindowMinutes(classified.session, CODEX_SESSION_WINDOW_MINUTES)
+    ),
+    weekly: mapRpcWindow(
+      classified.weekly,
+      snapshotWindowMinutes(classified.weekly, CODEX_WEEKLY_WINDOW_MINUTES)
+    ),
     // Surfaced for the status-bar Usage row (e.g. "Codex · Plus").
     planType: payload.plan_type,
     ...(payload.rate_limit_reset_credits !== undefined
@@ -543,6 +567,37 @@ async function fetchViaBackend(
     updatedAt: Date.now(),
     error: null,
     status: 'ok'
+  }
+}
+
+async function withBackendSessionWindow(
+  limits: ProviderRateLimits,
+  options?: FetchCodexRateLimitsOptions
+): Promise<ProviderRateLimits> {
+  if (options?.signal?.aborted || limits.session || !limits.weekly) {
+    return limits
+  }
+  try {
+    const backend = await fetchViaBackend(options)
+    if (!backend) {
+      return limits
+    }
+    const rateLimitResetCredits = backend.rateLimitResetCredits ?? limits.rateLimitResetCredits
+    if (!backend.session) {
+      return rateLimitResetCredits === limits.rateLimitResetCredits
+        ? limits
+        : { ...limits, rateLimitResetCredits }
+    }
+    return {
+      ...limits,
+      session: backend.session,
+      weekly: backend.weekly ?? limits.weekly,
+      planType: backend.planType ?? limits.planType,
+      ...(rateLimitResetCredits !== undefined ? { rateLimitResetCredits } : {}),
+      updatedAt: backend.updatedAt
+    }
+  } catch {
+    return limits
   }
 }
 
@@ -701,8 +756,9 @@ async function fetchViaRpc(options?: FetchCodexRateLimitsOptions): Promise<Provi
 
             const wrapper = msg.result as RpcRateLimitsResponse | undefined
             const result = wrapper?.rateLimits
-            const session = mapRpcWindow(result?.primary, 300)
-            const weekly = mapRpcWindow(result?.secondary, 10080)
+            const classifiedWindows = classifyCodexRateLimitWindows(result)
+            const session = mapRpcWindow(classifiedWindows.session, CODEX_SESSION_WINDOW_MINUTES)
+            const weekly = mapRpcWindow(classifiedWindows.weekly, CODEX_WEEKLY_WINDOW_MINUTES)
             const rateLimitResetCredits = mapRpcRateLimitResetCredits(
               wrapper?.rateLimitResetCredits
             )
@@ -773,10 +829,33 @@ async function fetchViaRpc(options?: FetchCodexRateLimitsOptions): Promise<Provi
 // PTY fallback — spawn `codex`, send `/status`, parse rendered output
 // ---------------------------------------------------------------------------
 
-// Why: match the Codex CLI /status output ("5h limit"/"Weekly limit" lines with a percent and optional reset text).
-const FIVE_HOUR_RE = /5h\s+limit[:\s]*(\d+)%/i
-const WEEKLY_RE = /weekly\s+limit[:\s]*(\d+)%/i
-const RESET_TEXT_RE = /resets?\s+(?:at\s+|in\s+)?(.+)/i
+// Why: match the Codex CLI /status output ("5h limit"/"Weekly limit" lines). Newer
+// CLIs render a meter between the label and the percent ("Weekly limit: [███░] 43% left"),
+// so skip any non-digit run and capture the used/left word to orient the number.
+// The lookbehind rejects model-scoped rows ("GPT-…-Spark Weekly limit") so they are
+// never selected as the account window regardless of row order; line-start anchoring
+// is unusable here because stripping cursor-move sequences merges visual lines.
+const FIVE_HOUR_RE = /(?<![\w-][^\S\r\n]{0,4})5h\s+limit[^\d%\r\n]*(\d+)%(?:\s*(used|left))?/i
+const WEEKLY_RE = /(?<![\w-][^\S\r\n]{0,4})weekly\s+limit[^\d%\r\n]*(\d+)%(?:\s*(used|left))?/i
+// Why: model-scoped limit rows must still stop a per-window reset-text scan.
+const ANY_LIMIT_LABEL_RE = /(?:5h|weekly)\s+limit/i
+
+// eslint-disable-next-line no-control-regex
+const PTY_CONTROL_SEQUENCE_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g
+
+function stripPtyControlSequences(output: string): string {
+  return output.replace(PTY_CONTROL_SEQUENCE_RE, '')
+}
+
+function isPtyLimitLabel(line: string): boolean {
+  return ANY_LIMIT_LABEL_RE.test(line)
+}
+
+function ptyUsedPercent(match: RegExpExecArray): number {
+  const pct = Number.parseInt(match[1], 10)
+  const oriented = match[2]?.toLowerCase() === 'left' ? 100 - pct : pct
+  return Math.min(100, Math.max(0, oriented))
+}
 
 function parsePtyStatus(output: string): {
   session: RateLimitWindow | null
@@ -784,30 +863,37 @@ function parsePtyStatus(output: string): {
 } {
   const fiveMatch = FIVE_HOUR_RE.exec(output)
   const weeklyMatch = WEEKLY_RE.exec(output)
+  const lines = output.split(/\r\n|\n|\r/)
+  // Why: each limit line owns the reset text that follows it (weekly-only plans
+  // have no 5h line), and parsing it into resetsAt is what the UI renders.
+  const sessionReset = extractClaudePtyResetMetadata(
+    lines,
+    (line) => FIVE_HOUR_RE.test(line),
+    isPtyLimitLabel
+  )
+  const weeklyReset = extractClaudePtyResetMetadata(
+    lines,
+    (line) => WEEKLY_RE.test(line),
+    isPtyLimitLabel
+  )
 
   const session: RateLimitWindow | null = fiveMatch
     ? {
-        usedPercent: Math.min(100, Number.parseInt(fiveMatch[1], 10)),
+        usedPercent: ptyUsedPercent(fiveMatch),
         windowMinutes: 300,
-        resetsAt: null,
-        resetDescription: null
+        resetsAt: sessionReset.resetsAt,
+        resetDescription: sessionReset.resetDescription
       }
     : null
 
   const weekly: RateLimitWindow | null = weeklyMatch
     ? {
-        usedPercent: Math.min(100, Number.parseInt(weeklyMatch[1], 10)),
+        usedPercent: ptyUsedPercent(weeklyMatch),
         windowMinutes: 10080,
-        resetsAt: null,
-        resetDescription: null
+        resetsAt: weeklyReset.resetsAt,
+        resetDescription: weeklyReset.resetDescription
       }
     : null
-
-  // Try to extract reset time from surrounding text
-  const resetMatch = RESET_TEXT_RE.exec(output)
-  if (resetMatch && session) {
-    session.resetDescription = resetMatch[1].trim()
-  }
 
   return { session, weekly }
 }
@@ -847,6 +933,53 @@ async function fetchViaPty(options?: FetchCodexRateLimitsOptions): Promise<Provi
       }
     })
     const termDisposables: { dispose: () => void }[] = [registerHiddenRateLimitPty(term)]
+
+    let statusEnter: ReturnType<typeof setTimeout> | null = null
+    function sendStatusCommand(): void {
+      sentStatus = true
+      if (statusNudge) {
+        clearTimeout(statusNudge)
+        statusNudge = null
+      }
+      term.write('/status')
+      statusEnter = setTimeout(() => {
+        statusEnter = null
+        term.write('\r')
+        statusEnter = setTimeout(() => {
+          statusEnter = null
+          if (!resolved && !settleTimer) {
+            term.write('\r')
+          }
+        }, PTY_STATUS_ENTER_RETRY_MS)
+      }, PTY_STATUS_ENTER_DELAY_MS)
+    }
+
+    let statusNudge: ReturnType<typeof setTimeout> | null = null
+    // Why: count the nudge grace from first TUI output, not spawn, so slow
+    // WSL/SSH boots get the full window before /status is typed.
+    function armStatusNudge(): void {
+      if (statusNudge || sentStatus || resolved) {
+        return
+      }
+      statusNudge = setTimeout(() => {
+        statusNudge = null
+        if (!resolved && !sentStatus) {
+          sendStatusCommand()
+        }
+      }, PTY_STATUS_NUDGE_MS)
+    }
+    termDisposables.push({
+      dispose: () => {
+        if (statusNudge) {
+          clearTimeout(statusNudge)
+          statusNudge = null
+        }
+        if (statusEnter) {
+          clearTimeout(statusEnter)
+          statusEnter = null
+        }
+      }
+    })
 
     function settleAborted(): void {
       if (resolved) {
@@ -902,15 +1035,18 @@ async function fetchViaPty(options?: FetchCodexRateLimitsOptions): Promise<Provi
         output = output.slice(-MAX_DIAGNOSTIC_OUTPUT_LENGTH)
       }
 
+      armStatusNudge()
+
       // Wait for prompt, then send /status
-      if (!sentStatus && />\s*$/.test(data)) {
-        sentStatus = true
-        term.write('/status\r')
+      if (!sentStatus && /[>›]\s*$/.test(data)) {
+        sendStatusCommand()
         return
       }
 
       // Check if we have parseable output
-      if (sentStatus && !settleTimer && (FIVE_HOUR_RE.test(output) || WEEKLY_RE.test(output))) {
+      // Why: colored meter bars embed digits inside CSI sequences, so probe cleaned text.
+      const probe = sentStatus && !settleTimer ? stripPtyControlSequences(output) : null
+      if (probe !== null && (FIVE_HOUR_RE.test(probe) || WEEKLY_RE.test(probe))) {
         // Why: the TUI keeps streaming after status is parseable; one settle timer lets the panel finish flushing.
         settleTimer = setTimeout(() => {
           settleTimer = null
@@ -924,8 +1060,7 @@ async function fetchViaPty(options?: FetchCodexRateLimitsOptions): Promise<Provi
           }
           cleanupHiddenRateLimitPty(term, termDisposables, { kill: true })
 
-          // eslint-disable-next-line no-control-regex
-          const clean = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+          const clean = stripPtyControlSequences(output)
           const { session, weekly } = parsePtyStatus(clean)
 
           resolve({
@@ -958,8 +1093,7 @@ async function fetchViaPty(options?: FetchCodexRateLimitsOptions): Promise<Provi
           clearTimeout(timeout)
           timeout = null
         }
-        // eslint-disable-next-line no-control-regex
-        const clean = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+        const clean = stripPtyControlSequences(output)
         const { session, weekly } = parsePtyStatus(clean)
         resolve({
           provider: 'codex',
@@ -1048,7 +1182,8 @@ export async function fetchCodexRateLimits(
       return abortedCodexRateLimitResult()
     }
     if (rpcResult.status === 'ok' || rpcResult.status === 'unavailable') {
-      const withResetCredits = await withBackendRateLimitResetCredits(rpcResult, options)
+      const withSession = await withBackendSessionWindow(rpcResult, options)
+      const withResetCredits = await withBackendRateLimitResetCredits(withSession, options)
       return options?.signal?.aborted ? abortedCodexRateLimitResult() : withResetCredits
     }
     if (isCodexAuthError(rpcResult.error)) {
@@ -1084,7 +1219,8 @@ export async function fetchCodexRateLimits(
     if (options?.signal?.aborted) {
       return abortedCodexRateLimitResult()
     }
-    const withResetCredits = await withBackendRateLimitResetCredits(ptyResult, options)
+    const withSession = await withBackendSessionWindow(ptyResult, options)
+    const withResetCredits = await withBackendRateLimitResetCredits(withSession, options)
     return options?.signal?.aborted ? abortedCodexRateLimitResult() : withResetCredits
   } catch (err) {
     if (options?.signal?.aborted) {

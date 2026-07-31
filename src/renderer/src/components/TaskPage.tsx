@@ -44,7 +44,8 @@ import { getLocalPreflightContext, localPreflightContextKey } from '@/lib/local-
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
   getSettingsFocusedExecutionHostId,
-  parseExecutionHostId
+  parseExecutionHostId,
+  getRepoExecutionHostId
 } from '../../../shared/execution-host'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -192,7 +193,6 @@ import {
   buildYunxiaoFixWorkspaceRequest,
   YUNXIAO_FIX_AGENT
 } from '@/lib/yunxiao-fix-workspace-request'
-import { getRepoExecutionHostId } from '../../../shared/execution-host'
 import { projectHostSetupProjectionFromRepos } from '../../../shared/project-host-setup-projection'
 import { TASK_SOURCE_CONTEXT_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import {
@@ -250,6 +250,7 @@ import { findTaskPageJiraIssue } from '@/components/task-page-jira-cache-selecto
 import { getRepoBackedTaskEmptyState } from '@/components/task-page-empty-state'
 import {
   getDefaultTaskRepoSelection,
+  getTaskEligibleRepos,
   getTaskProjectPickerGroups,
   normalizeTaskRepoSelection
 } from '@/components/task-page-default-repo-selection'
@@ -353,6 +354,7 @@ import {
   type JiraPrioritiesBySite
 } from './jira-issue-sorter'
 import { TaskPageJiraSortControls } from './task-page-jira-sort-controls'
+import { bindTaskPageJiraItemSourceContext } from './task-page-jira-item-source-context'
 import {
   normalizeVisibleTaskProviders,
   restoreAvailableDefaultTaskProvider,
@@ -2059,6 +2061,9 @@ function getChecksLabel(item: GitHubWorkItem): string {
   if (summary.pending > 0) {
     return `${summary.pending} pending`
   }
+  if (summary.neutral > 0) {
+    return `${summary.neutral} unresolved`
+  }
   return `${summary.passed}/${summary.total} passed`
 }
 
@@ -3203,7 +3208,7 @@ export default function TaskPage(): React.JSX.Element {
   const selectedYunxiaoAccountId =
     yunxiaoStatus.selectedAccountId ?? yunxiaoStatus.activeAccountId ?? null
   const submitShortcutLabel = getScreenSubmitShortcutLabel()
-  const eligibleRepos = useMemo(() => repos.filter((repo) => isGitRepoKind(repo)), [repos])
+  const eligibleRepos = useMemo(() => getTaskEligibleRepos(repos), [repos])
 
   // Why: initial selection precedence — explicit preselection > persisted defaultRepoSelection > all eligible; preselection wins so "open tasks for this repo" lands single-repo.
   const resolvedInitialSelection = useMemo<ReadonlySet<string>>(() => {
@@ -3278,7 +3283,7 @@ export default function TaskPage(): React.JSX.Element {
     selectedLinearWorkspaceId && selectedLinearWorkspaceId !== 'all'
       ? (linearWorkspaces.find((workspace) => workspace.id === selectedLinearWorkspaceId) ?? null)
       : null
-  const jiraSites = jiraStatus.sites ?? []
+  const jiraSites = useMemo(() => jiraStatus.sites ?? [], [jiraStatus.sites])
   const selectedJiraSiteId =
     jiraStatus.selectedSiteId ?? jiraStatus.activeSiteId ?? jiraSites[0]?.id ?? null
   const selectedJiraSite =
@@ -6689,10 +6694,12 @@ export default function TaskPage(): React.JSX.Element {
   const openComposerForItem = useCallback(
     (item: GitHubWorkItem): void => {
       const linkedWorkItem: LinkedWorkItemSummary = {
+        provider: 'github',
         type: item.type,
         number: item.number,
         title: item.title,
-        url: item.url
+        url: item.url,
+        ...(item.repoId ? { repoId: item.repoId } : {})
       }
       openModal('new-workspace-composer', {
         linkedWorkItem,
@@ -6755,10 +6762,12 @@ export default function TaskPage(): React.JSX.Element {
   const openComposerForGitLabItem = useCallback(
     (item: GitLabWorkItem): void => {
       const linkedWorkItem: LinkedWorkItemSummary = {
+        provider: 'gitlab',
         type: item.type,
         number: item.number,
         title: item.title,
-        url: item.url
+        url: item.url,
+        ...(item.repoId ? { repoId: item.repoId } : {})
       }
       openModal('new-workspace-composer', {
         linkedWorkItem,
@@ -7216,6 +7225,7 @@ export default function TaskPage(): React.JSX.Element {
     // Why: when a modal is open, let it own Esc dismissal.
     if (
       dialogWorkItem ||
+      selectedJiraIssue ||
       selectedLinearIssue ||
       newIssueOpen ||
       newLinearIssueOpen ||
@@ -7260,7 +7270,8 @@ export default function TaskPage(): React.JSX.Element {
     newIssueOpen,
     newLinearIssueOpen,
     newJiraIssueOpen,
-    selectedLinearIssue
+    selectedLinearIssue,
+    selectedJiraIssue
   ])
 
   useEffect(() => {
@@ -8075,6 +8086,21 @@ export default function TaskPage(): React.JSX.Element {
 
   const openComposerForJiraItem = useCallback(
     (issue: JiraIssue): void => {
+      const taskSourceContext = bindTaskPageJiraItemSourceContext({
+        issue,
+        sites: jiraSites,
+        sourceContext: jiraTaskSourceContext
+      })
+      if (!taskSourceContext) {
+        // Why: composer drops Jira items without matching source context — refuse rather than create unlinked.
+        toast.error(
+          translate(
+            'auto.components.TaskPage.jiraLinkSourceUnavailable',
+            'Couldn’t link this Jira issue. Reconnect Jira or pick the matching site, then try again.'
+          )
+        )
+        return
+      }
       const linkedWorkItem: LinkedWorkItemSummary = {
         type: 'issue',
         provider: 'jira',
@@ -8085,12 +8111,12 @@ export default function TaskPage(): React.JSX.Element {
       }
       openModal('new-workspace-composer', {
         linkedWorkItem,
-        taskSourceContext: jiraTaskSourceContext,
+        taskSourceContext,
         prefilledName: getJiraIssueWorkspaceSeed(issue),
         telemetrySource: 'sidebar'
       })
     },
-    [jiraTaskSourceContext, openModal]
+    [jiraSites, jiraTaskSourceContext, openModal]
   )
 
   const handleUseJiraItem = useCallback(
@@ -8951,7 +8977,8 @@ export default function TaskPage(): React.JSX.Element {
                             workspaceId={selectedLinearWorkspaceId ?? null}
                             isAllWorkspaces={selectedLinearWorkspaceId === 'all'}
                             primaryTeam={linearAttributePrimaryTeam}
-                            selectedTeamCount={linearTeamSelection.size}
+                            selectedTeamIds={[...linearTeamSelection]}
+                            availableTeams={linearTeamOptions}
                             settings={linearTaskSourceContext ?? settings}
                           />
                         ) : null}

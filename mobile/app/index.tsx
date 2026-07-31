@@ -17,6 +17,7 @@ import { ClaudeIcon, OpenAIIcon } from '../src/components/AgentIcons'
 import {
   type AccountsSnapshot,
   type ProviderKey,
+  decodeAccountsSnapshot,
   getActiveProviderRateLimits,
   getUsageBarState,
   hasActiveProviderUsage,
@@ -25,6 +26,7 @@ import {
 } from '../src/components/AccountUsage'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { loadHosts } from '../src/transport/host-store'
+import { navigateToMobileHostEdit } from '../src/transport/host-edit-navigation'
 import { removeHostAndCloseClient } from '../src/transport/host-removal-lifecycle'
 import { pickResumeWorktree } from '../src/worktree/resume-worktree'
 import type { RpcClient } from '../src/transport/rpc-client'
@@ -231,7 +233,7 @@ function fetchAccountsSnapshot(
         return
       }
       if (response.ok) {
-        const snapshot = response.result as AccountsSnapshot
+        const snapshot = decodeAccountsSnapshot(response.result)
         setSnapshots((prev) => ({ ...prev, [hostId]: snapshot }))
       }
     })
@@ -503,9 +505,15 @@ export default function HomeScreen() {
               if (!payload || typeof payload !== 'object') {
                 return
               }
-              const evt = payload as { type?: string; snapshot?: AccountsSnapshot }
-              if ((evt.type === 'ready' || evt.type === 'snapshot') && evt.snapshot) {
-                setAccountsByHost((prev) => ({ ...prev, [entry.hostId]: evt.snapshot! }))
+              const evt = payload as { type?: string; snapshot?: unknown }
+              if (evt.type === 'ready' || evt.type === 'snapshot') {
+                try {
+                  const snapshot = decodeAccountsSnapshot(evt.snapshot)
+                  setAccountsByHost((prev) => ({ ...prev, [entry.hostId]: snapshot }))
+                } catch {
+                  // Keep the last proven snapshot; malformed remote data must
+                  // not enter render state or crash the home host cards.
+                }
               }
             })
           }
@@ -1003,7 +1011,7 @@ export default function HomeScreen() {
             closeBeforePress: true,
             onPress: () => {
               setActionTarget(null)
-              router.push(`/h/${host.id}/edit`)
+              navigateToMobileHostEdit(router, host.id)
             }
           })
           items.push({

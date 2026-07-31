@@ -19,6 +19,7 @@ import {
 } from './ssh-system-fallback'
 import { resolveWithSshG, type SshResolvedConfig } from './ssh-config-parser'
 import { removeControlSocketPath } from './ssh-control-socket'
+import { isOpenSshConfigBackedTarget } from './system-ssh-args'
 import {
   INITIAL_RETRY_ATTEMPTS,
   INITIAL_RETRY_DELAY_MS,
@@ -39,7 +40,12 @@ import {
   type SshExecOptions,
   type SshConnectionCallbacks
 } from './ssh-connection-utils'
+import { getPassphrasePrivateKeyPath } from './ssh-private-key-authentication'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
+import {
+  resolveSftpTransferPathIfMapped,
+  type SftpNamespacePathMapping
+} from './sftp-namespace-resolution'
 import type { FileUploadSession } from '../providers/types'
 import { isSshSessionLimitError } from './ssh-session-limit-error'
 import {
@@ -50,6 +56,8 @@ export type { SshConnectionCallbacks } from './ssh-connection-utils'
 
 type SshRemoteFileOptions = {
   hostPlatform?: RemoteHostPlatform
+  // Only uploadDirectory and writeFile honor this, and only on the non-Windows ssh2 branch.
+  sftpNamespace?: SftpNamespacePathMapping
 }
 
 // Upper bound on waiting for an aborted channel's open/close to settle before rejecting anyway.
@@ -64,6 +72,40 @@ function cloneResolvedConfig(config: SshResolvedConfig | null): SshResolvedConfi
     return null
   }
   return { ...config, identityFile: [...config.identityFile] }
+}
+
+function isGitHubRestrictedShellProbeSuccess(
+  target: SshTarget,
+  resolvedConfig: SshResolvedConfig | null,
+  code: number | null,
+  stderr: string
+): boolean {
+  if (code !== 1) {
+    return false
+  }
+
+  const effectiveUser = (
+    isOpenSshConfigBackedTarget(target) && resolvedConfig
+      ? resolvedConfig.user?.trim() || target.username?.trim()
+      : target.username?.trim() || resolvedConfig?.user?.trim()
+  )?.toLowerCase()
+  if (effectiveUser !== 'git') {
+    return false
+  }
+
+  // GitHub appends git:// advisory lines after the invalid-command line (issue #6988), so match the first line only.
+  const firstLine = stderr.split('\n', 1)[0]?.trim()
+  if (firstLine !== 'Invalid command: echo ORCA-SYSTEM-SSH-OK') {
+    return false
+  }
+
+  const resolvedHost = resolvedConfig?.hostname?.trim()
+  const hostCandidates = resolvedHost ? [resolvedHost] : [target.host, target.configHost]
+
+  return hostCandidates.some((host) => {
+    const normalizedHost = host?.trim().toLowerCase()
+    return normalizedHost === 'github.com' || normalizedHost === 'ssh.github.com'
+  })
 }
 
 export class SshConnection {
@@ -393,15 +435,17 @@ export class SshConnection {
         sftp.on('error', swallowLateSftpError)
         sftp.once('close', () => sftp.removeListener('error', swallowLateSftpError))
         try {
-          const { uploadDirectory } = await import('./ssh-relay-deploy-helpers')
-          await raceSftpFileTransferWithAbort(
-            uploadDirectory(sftp, localDir, remoteDir),
-            linkedSignal.signal,
-            (onClose) => {
-              sftp.once('close', onClose)
-              endSftp()
-            }
-          )
+          // Why: resolve on the same session that transfers — a later session is not authoritative for this one's namespace.
+          const transfer = (async (): Promise<void> => {
+            const targetDir = await resolveSftpTransferPathIfMapped(sftp, remoteDir, options)
+            linkedSignal.signal.throwIfAborted()
+            const { uploadDirectory } = await import('./ssh-relay-deploy-helpers')
+            await uploadDirectory(sftp, localDir, targetDir)
+          })()
+          await raceSftpFileTransferWithAbort(transfer, linkedSignal.signal, (onClose) => {
+            sftp.once('close', onClose)
+            endSftp()
+          })
         } finally {
           endSftp()
         }
@@ -489,35 +533,13 @@ export class SshConnection {
         sftp.on('error', swallowLateSftpError)
         sftp.once('close', () => sftp.removeListener('error', swallowLateSftpError))
         try {
-          const write = new Promise<void>((resolve, reject) => {
-            const ws = sftp.createWriteStream(remotePath)
-            let settled = false
-            const cleanup = (): void => {
-              sftp.removeListener('error', onError)
-              ws.removeListener('close', onClose)
-              ws.removeListener('error', onError)
-            }
-            const onClose = (): void => {
-              if (settled) {
-                return
-              }
-              settled = true
-              cleanup()
-              resolve()
-            }
-            const onError = (err: Error): void => {
-              if (settled) {
-                return
-              }
-              settled = true
-              cleanup()
-              reject(err)
-            }
-            sftp.prependOnceListener('error', onError)
-            ws.once('close', onClose)
-            ws.once('error', onError)
-            ws.end(contents)
-          })
+          // Why: resolve on the same session that writes — a later session is not authoritative for this one's namespace.
+          const write = (async (): Promise<void> => {
+            const targetPath = await resolveSftpTransferPathIfMapped(sftp, remotePath, options)
+            linkedSignal.signal.throwIfAborted()
+            const { writeStringViaSftp } = await import('./sftp-upload')
+            await writeStringViaSftp(sftp, targetPath, contents)
+          })()
           await raceSftpFileTransferWithAbort(write, linkedSignal.signal, (onClose) => {
             sftp.once('close', onClose)
             endSftp()
@@ -615,7 +637,11 @@ export class SshConnection {
       return
     }
     // Why: ssh2 lacks gssapi-with-mic; GSSAPIAuthentication hosts try Kerberos SSO via system OpenSSH first, then fall through to key/credential auth.
-    if (this.target.gssapiAuthentication === true) {
+    if (
+      isOpenSshConfigBackedTarget(this.target) && resolved
+        ? resolved.gssapiAuthentication === true
+        : this.target.gssapiAuthentication === true
+    ) {
       try {
         await this.doSystemSshProbeWithControlMasterRetry(connectGeneration, resolved, true)
         return
@@ -703,14 +729,19 @@ export class SshConnection {
               throw keyErr
             }
             authError = keyErr
+            const passphraseKeyPath = getPassphrasePrivateKeyPath(keyConfig)
             // Why: with GSSAPI enabled, let the reactive system-ssh probe try a Kerberos ticket before prompting for the passphrase; the prompt still runs if it fails.
             if (
-              isPassphraseError(authError) &&
+              (isPassphraseError(authError) || passphraseKeyPath) &&
               !this.cachedPassphrase &&
               !isGssapiSystemSshFallbackCandidate(authError, this.target, resolved)
             ) {
               passphrasePromptHandled = true
-              const detail = this.target.identityFile || resolved?.identityFile?.[0] || '(unknown)'
+              const detail =
+                passphraseKeyPath ||
+                this.target.identityFile ||
+                resolved?.identityFile?.[0] ||
+                '(unknown)'
               const val = await this.callbacks.onCredentialRequest?.(
                 this.target.id,
                 'passphrase',
@@ -754,8 +785,17 @@ export class SshConnection {
       }
 
       // Why: prompt for passphrase on encrypted-key error, then retry with a fresh proxy socket (ssh2 may have destroyed the original).
-      if (isPassphraseError(authError) && !this.cachedPassphrase && !passphrasePromptHandled) {
-        const detail = this.target.identityFile || resolved?.identityFile?.[0] || '(unknown)'
+      const passphraseKeyPath = getPassphrasePrivateKeyPath(credentialRetryConfig)
+      if (
+        (isPassphraseError(authError) || passphraseKeyPath) &&
+        !this.cachedPassphrase &&
+        !passphrasePromptHandled
+      ) {
+        const detail =
+          passphraseKeyPath ||
+          this.target.identityFile ||
+          resolved?.identityFile?.[0] ||
+          '(unknown)'
         const val = await this.callbacks.onCredentialRequest(this.target.id, 'passphrase', detail)
         if (val) {
           this.cachedPassphrase = val
@@ -847,16 +887,24 @@ export class SshConnection {
               reject(new Error('SSH connection attempt was cancelled'))
               return
             }
-            if (code !== 0 || !stdout.includes('ORCA-SYSTEM-SSH-OK')) {
-              reject(
-                new Error(
-                  `System SSH probe failed${code != null ? ` (exit ${code})` : ''}.${stderr ? ` stderr: ${stderr.trim()}` : ''}`
-                )
+            if (
+              (code === 0 && stdout.includes('ORCA-SYSTEM-SSH-OK')) ||
+              isGitHubRestrictedShellProbeSuccess(
+                this.target,
+                this.systemSshResolvedConfig,
+                code,
+                stderr
               )
+            ) {
+              this.setState('connected')
+              resolve()
               return
             }
-            this.setState('connected')
-            resolve()
+            reject(
+              new Error(
+                `System SSH probe failed${code != null ? ` (exit ${code})` : ''}.${stderr ? ` stderr: ${stderr.trim()}` : ''}`
+              )
+            )
           })
         }
         const timeout = setTimeout(() => {
@@ -1338,6 +1386,14 @@ export function shouldUseSystemSshTransport(
   target: SshTarget,
   resolved: Pick<SshResolvedConfig, 'proxyUseFdpass' | 'proxyCommand' | 'proxyJump'> | null
 ): boolean {
+  if (isOpenSshConfigBackedTarget(target) && resolved) {
+    return (
+      process.env.ORCA_SSH_FORCE_SYSTEM_TRANSPORT === '1' ||
+      resolved.proxyUseFdpass === true ||
+      resolved.proxyCommand != null ||
+      resolved.proxyJump != null
+    )
+  }
   return (
     process.env.ORCA_SSH_FORCE_SYSTEM_TRANSPORT === '1' ||
     target.proxyCommand != null ||
@@ -1347,5 +1403,3 @@ export function shouldUseSystemSshTransport(
     resolved?.proxyJump != null
   )
 }
-
-export { SshConnectionManager } from './ssh-connection-manager'

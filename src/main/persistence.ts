@@ -11,7 +11,8 @@ import {
   statSync,
   realpathSync
 } from 'node:fs'
-import { writeFile, rename, mkdir, rm, copyFile } from 'node:fs/promises'
+import { rename, mkdir, rm, copyFile, open } from 'node:fs/promises'
+import { renameDurable, writeFileDurableSync } from './durable-file-write'
 import { join, dirname, isAbsolute, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash, randomUUID } from 'node:crypto'
@@ -71,11 +72,19 @@ import {
   normalizeProjectRuntimePreference
 } from '../shared/project-execution-runtime'
 import { projectHostSetupProjectionFromRepos } from '../shared/project-host-setup-projection'
+import { isPluginPanelTabKey } from '../shared/plugins/plugin-manifest'
 import type { GitRemoteIdentity } from '../shared/git-remote-identity'
 import {
+  areTaskSourceContextsEqual,
   buildTaskSourceContextFromRepo,
-  buildWorkspaceRunContext
+  buildWorkspaceRunContext,
+  normalizeStoredTaskSourceContext
 } from '../shared/task-source-context'
+import {
+  areWorkspaceLinkedItemsEqual,
+  normalizeWorkspaceLinkedItem
+} from '../shared/workspace-linked-item'
+import { isWorkspaceLinkedItemSourceContextMatch } from '../shared/workspace-linked-item-source-context'
 import type { MigrationUnsupportedPtyEntry } from '../shared/agent-status-types'
 import { MOBILE_PAIRING_USERDATA_FILES } from './runtime/mobile-pairing-files'
 import { normalizePersistedMobileClientTabSelections } from './runtime/client-session-tab-selection-persistence'
@@ -92,7 +101,16 @@ import {
   type SshTarget
 } from '../shared/ssh-types'
 import { isFolderRepo } from '../shared/repo-kind'
-import { getRepoExecutionHostId, parseExecutionHostId } from '../shared/execution-host'
+import {
+  getRepoExecutionHostId,
+  parseExecutionHostId,
+  LOCAL_EXECUTION_HOST_ID,
+  normalizeExecutionHostOrder,
+  normalizeExecutionHostId,
+  normalizeVisibleExecutionHostIds,
+  toSshExecutionHostId,
+  type ExecutionHostId
+} from '../shared/execution-host'
 import {
   getDefaultPersistedState,
   getDefaultNotificationSettings,
@@ -114,14 +132,6 @@ import { normalizeStatusBarUsageMode } from '../shared/status-bar-usage-mode'
 import { isExistingPersistedProfile } from '../shared/project-order-manual-default-notice'
 import { resolveUsagePercentageDisplayChangeNoticeDismissed } from '../shared/usage-percentage-display-change-notice'
 import { normalizePRBotAuthorOverrides } from '../shared/pr-bot-author-overrides'
-import {
-  LOCAL_EXECUTION_HOST_ID,
-  normalizeExecutionHostOrder,
-  normalizeExecutionHostId,
-  normalizeVisibleExecutionHostIds,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../shared/execution-host'
 import { toRelaySshPtyId } from './providers/ssh-pty-id'
 import {
   migrateUiHostScopeSshTargetId,
@@ -178,6 +188,10 @@ import {
 } from '../shared/feature-interactions'
 import { normalizeContextualTourIds } from '../shared/contextual-tours'
 import { normalizeFeatureTipIds } from '../shared/feature-tips'
+import {
+  parseCodexResetCreditAttemptLedger,
+  type CodexResetCreditAttemptLedger
+} from '../shared/codex-reset-credit-attempt-ledger'
 import { normalizeManualRepoOrder } from '../shared/manual-repo-order'
 import {
   DEFAULT_WORKSPACE_STATUS_ID,
@@ -187,6 +201,7 @@ import {
   normalizeWorkspaceStatuses
 } from '../shared/workspace-statuses'
 import { clampMarkdownTocPanelWidth } from '../shared/markdown-toc-panel-width'
+import { clampCombinedDiffFileTreeWidth } from '../shared/combined-diff-file-tree-width'
 import { isLegacyRepoForExternalWorktreeVisibility } from '../shared/worktree-ownership'
 import { sanitizeRepoIcon } from '../shared/repo-icon'
 import { normalizeRepoBadgeColor } from '../shared/repo-badge-color'
@@ -219,6 +234,10 @@ import {
   normalizeTuiAgentEnvRecord
 } from '../shared/tui-agent-launch-defaults'
 import { normalizeTerminalCursorStyleDefault } from '../shared/terminal-cursor-style-settings'
+import {
+  normalizeOsc52ClipboardDefaultOn,
+  osc52ClipboardDefaultOnOverridesPersistedOff
+} from '../shared/osc52-clipboard-settings'
 import { normalizeTerminalLineHeight } from '../shared/terminal-line-height-settings'
 import { normalizeUiLanguage } from '../shared/ui-language'
 import { normalizeBrowserPageZoomLevel } from '../shared/browser-page-zoom'
@@ -402,6 +421,49 @@ function gcStaleWorktreeMeta(state: PersistedState): number {
     removed++
   }
   return removed
+}
+
+function normalizeWorktreeLinkedItemMetadata(state: PersistedState): boolean {
+  let changed = false
+  const rawWorktreeMeta = state.worktreeMeta as unknown
+  if (
+    typeof rawWorktreeMeta !== 'object' ||
+    rawWorktreeMeta === null ||
+    Array.isArray(rawWorktreeMeta)
+  ) {
+    state.worktreeMeta = {}
+    changed = rawWorktreeMeta !== undefined
+  }
+  for (const [key, meta] of Object.entries(state.worktreeMeta)) {
+    // Why: hand-corrupted non-object entries are a real input class; drop them here because gcStaleWorktreeMeta
+    // keeps timestamp-less keys forever and every downstream consumer trusts the Record<string, WorktreeMeta> type.
+    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+      delete state.worktreeMeta[key]
+      // Companions go with it, matching gcStaleWorktreeMeta/removeWorktreeMeta; a stranded lineage row would
+      // otherwise re-attach to a worktree recreated at the same repoId::path.
+      delete state.worktreeLineageById[key]
+      delete state.workspaceLineageByChildKey[worktreeWorkspaceKey(key)]
+      changed = true
+      continue
+    }
+    const linkedWorkItem = normalizeWorkspaceLinkedItem(meta.linkedWorkItem)
+    const sourceContext = normalizeStoredTaskSourceContext(meta.linkedTaskSourceContext)
+    const linkedTaskSourceContext = isWorkspaceLinkedItemSourceContextMatch(
+      linkedWorkItem,
+      sourceContext
+    )
+      ? sourceContext
+      : null
+    if (!areWorkspaceLinkedItemsEqual(meta.linkedWorkItem, linkedWorkItem)) {
+      meta.linkedWorkItem = linkedWorkItem
+      changed = true
+    }
+    if (!areTaskSourceContextsEqual(meta.linkedTaskSourceContext, linkedTaskSourceContext)) {
+      meta.linkedTaskSourceContext = linkedTaskSourceContext
+      changed = true
+    }
+  }
+  return changed
 }
 
 function readGithubCacheSnapshot(dataFile: string): PersistedState['githubCache'] | null {
@@ -772,16 +834,22 @@ function normalizeProjectOrderBy(projectOrderBy: unknown): PersistedState['ui'][
   return getDefaultUIState().projectOrderBy
 }
 
-function normalizeRightSidebarTab(tab: unknown): PersistedState['ui']['rightSidebarTab'] {
+export function normalizeRightSidebarTab(tab: unknown): PersistedState['ui']['rightSidebarTab'] {
   if (
     tab === 'explorer' ||
     tab === 'search' ||
     tab === 'vault' ||
     tab === 'workspaces' ||
+    tab === 'pr-checks' ||
     tab === 'source-control' ||
     tab === 'checks' ||
     tab === 'ports'
   ) {
+    return tab
+  }
+  // Why: plugin tabs are open-ended `plugin:<publisher>.<id>/<panel>` keys; validate the
+  // shape so a persisted plugin tab doesn't reset to Explorer on restart.
+  if (typeof tab === 'string' && isPluginPanelTabKey(tab)) {
     return tab
   }
   return getDefaultUIState().rightSidebarTab
@@ -1095,6 +1163,7 @@ function backfillLegacyAutomationContexts(
 type LegacySshTarget = SshTarget & {
   remoteWorkspaceSyncEnabled?: unknown
   remoteWorkspaceSyncGracePeriodSeconds?: unknown
+  experimentalPtySourceCreditV1?: unknown
 }
 
 // Why: old targets predate configHost; default to label-based lookup so imported SSH aliases still resolve via ssh -G.
@@ -1109,6 +1178,7 @@ function normalizeSshTarget(t: SshTarget): SshTarget {
   delete target.remoteWorkspaceSyncGracePeriodSeconds
   delete target.relayGracePeriodSeconds
   delete target.systemSshConnectionReuse
+  delete target.experimentalPtySourceCreditV1
   // Why: prefer the synced grace over stale relayGracePeriodSeconds so a user's "unlimited" (0) survives migration.
   const relayGracePeriodSeconds =
     legacySyncEnabled === true && typeof legacyGracePeriodSeconds === 'number'
@@ -1311,7 +1381,12 @@ function sanitizeRepoUpstream(value: unknown): Repo['upstream'] | undefined {
   return owner && repo ? { owner, repo } : undefined
 }
 
-function sanitizeGitRemoteIdentity(value: unknown): GitRemoteIdentity | undefined {
+function sanitizeGitRemoteIdentity(value: unknown): GitRemoteIdentity | null | undefined {
+  // Why: `null` is a resolved "no usable remote" marker; dropping it would make
+  // a settled repo indistinguishable from one whose identity probe is pending.
+  if (value === null) {
+    return null
+  }
   if (!value || typeof value !== 'object') {
     return undefined
   }
@@ -1370,7 +1445,7 @@ function sanitizeRepoUpdatesForPersistence<
       sanitized.repoIcon = repoIcon
     }
   }
-  // Why: `null` is a valid "not a fork" marker; only drop malformed shapes.
+  // Why: `null` is a valid "not a fork" / "no usable remote" marker; only drop malformed shapes.
   if ('upstream' in sanitized) {
     const upstream = sanitizeRepoUpstream(sanitized.upstream)
     if (upstream === undefined) {
@@ -2348,50 +2423,36 @@ function cloneWorkspaceSessionState(session: WorkspaceSessionState): WorkspaceSe
   return structuredClone(session)
 }
 
-function removeWorkspaceSessionOwner(
-  session: WorkspaceSessionState | undefined,
+// Deletes the O(1) owner-keyed fields for `ownerKey` from an already-cloned
+// session in place, recording removed tab ids into `removedTabIds`. The
+// pane-key-scanned maps (pty incarnations, surface tombstones, sleeping agents)
+// and the shutdown list are handled by deleteScannedSessionFieldsForOwners so a
+// batch prune scans each collection once instead of once per owner.
+function deleteOwnerKeyedSessionFields(
+  next: WorkspaceSessionState,
   ownerKey: string,
+  removedTabIds: Set<string>,
   options: { advanceTerminalTopologyRevision?: boolean } = {}
-): WorkspaceSessionState | undefined {
-  if (!session) {
-    return session
-  }
-  const next = cloneWorkspaceSessionState(session)
+): void {
   const removedTerminalTabs = next.tabsByWorktree?.[ownerKey] ?? []
   if (next.tabsByWorktree) {
     delete next.tabsByWorktree[ownerKey]
   }
   for (const tab of removedTerminalTabs) {
+    removedTabIds.add(tab.id)
     delete next.terminalLayoutsByTabId[tab.id]
     if (next.activeTabId === tab.id) {
       next.activeTabId = null
     }
   }
-  if (next.terminalPtyIncarnationsByPaneKey) {
-    const removedTabIds = new Set(removedTerminalTabs.map((tab) => tab.id))
-    next.terminalPtyIncarnationsByPaneKey = Object.fromEntries(
-      Object.entries(next.terminalPtyIncarnationsByPaneKey).filter(([paneKey]) => {
-        const separator = paneKey.lastIndexOf(':')
-        return separator < 1 || !removedTabIds.has(paneKey.slice(0, separator))
-      })
-    )
-  }
-  if (next.terminalSurfaceTombstonesByPaneKey) {
-    next.terminalSurfaceTombstonesByPaneKey = Object.fromEntries(
-      Object.entries(next.terminalSurfaceTombstonesByPaneKey).filter(
-        ([, tombstone]) => tombstone.worktreeId !== ownerKey
-      )
-    )
-  }
-  const repoId = getRepoIdFromWorktreeId(ownerKey)
-  const previousTopologyRevision = next.terminalTopologyRevisionByRepoId?.[repoId] ?? 0
   if (options.advanceTerminalTopologyRevision) {
+    const repoId = getRepoIdFromWorktreeId(ownerKey)
+    const previousTopologyRevision = next.terminalTopologyRevisionByRepoId?.[repoId] ?? 0
     next.terminalTopologyRevisionByRepoId = {
       ...next.terminalTopologyRevisionByRepoId,
       [repoId]: previousTopologyRevision + 1
     }
   }
-
   if (next.openFilesByWorktree) {
     delete next.openFilesByWorktree[ownerKey]
   }
@@ -2434,21 +2495,83 @@ function removeWorkspaceSessionOwner(
   if (next.defaultTerminalTabsAppliedByWorktreeId) {
     delete next.defaultTerminalTabsAppliedByWorktreeId[ownerKey]
   }
-  if (next.sleepingAgentSessionsByPaneKey) {
-    for (const [paneKey, record] of Object.entries(next.sleepingAgentSessionsByPaneKey)) {
-      if (record.worktreeId === ownerKey) {
-        delete next.sleepingAgentSessionsByPaneKey[paneKey]
-      }
-    }
-  }
   if (next.activeWorkspaceKey === ownerKey) {
     next.activeWorkspaceKey = null
   }
   if (next.activeWorktreeId === ownerKey) {
     next.activeWorktreeId = null
   }
+}
+
+// Scans the pane-key-keyed maps and the shutdown list once, removing every entry
+// owned by a key matched by `isRemovedOwner` (or, for pty incarnations, whose tab
+// was removed). Kept separate from the O(1) deletes so a batch prune scans each
+// collection a single time regardless of how many owners are being removed.
+function deleteScannedSessionFieldsForOwners(
+  next: WorkspaceSessionState,
+  removedTabIds: ReadonlySet<string>,
+  isRemovedOwner: (worktreeId: string) => boolean
+): void {
+  if (next.terminalPtyIncarnationsByPaneKey) {
+    next.terminalPtyIncarnationsByPaneKey = Object.fromEntries(
+      Object.entries(next.terminalPtyIncarnationsByPaneKey).filter(([paneKey]) => {
+        const separator = paneKey.lastIndexOf(':')
+        return separator < 1 || !removedTabIds.has(paneKey.slice(0, separator))
+      })
+    )
+  }
+  if (next.terminalSurfaceTombstonesByPaneKey) {
+    next.terminalSurfaceTombstonesByPaneKey = Object.fromEntries(
+      Object.entries(next.terminalSurfaceTombstonesByPaneKey).filter(
+        ([, tombstone]) => !isRemovedOwner(tombstone.worktreeId)
+      )
+    )
+  }
+  if (next.sleepingAgentSessionsByPaneKey) {
+    for (const [paneKey, record] of Object.entries(next.sleepingAgentSessionsByPaneKey)) {
+      if (isRemovedOwner(record.worktreeId)) {
+        delete next.sleepingAgentSessionsByPaneKey[paneKey]
+      }
+    }
+  }
   next.activeWorktreeIdsOnShutdown = next.activeWorktreeIdsOnShutdown?.filter(
-    (worktreeId) => worktreeId !== ownerKey
+    (worktreeId) => !isRemovedOwner(worktreeId)
+  )
+}
+
+function removeWorkspaceSessionOwner(
+  session: WorkspaceSessionState | undefined,
+  ownerKey: string,
+  options: { advanceTerminalTopologyRevision?: boolean } = {}
+): WorkspaceSessionState | undefined {
+  if (!session) {
+    return session
+  }
+  const next = cloneWorkspaceSessionState(session)
+  const removedTabIds = new Set<string>()
+  deleteOwnerKeyedSessionFields(next, ownerKey, removedTabIds, options)
+  deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) => worktreeId === ownerKey)
+  return next
+}
+
+// Batch variant of removeWorkspaceSessionOwner: prunes every owner in `ownerKeys`
+// with a single structuredClone and a single scan of each collection, instead of
+// one clone+scan per owner. Project removal can touch many worktrees across many
+// host partitions, so the per-owner clones added up to O(worktrees × hosts).
+function removeWorkspaceSessionOwners(
+  session: WorkspaceSessionState | undefined,
+  ownerKeys: ReadonlySet<string>
+): WorkspaceSessionState | undefined {
+  if (!session || ownerKeys.size === 0) {
+    return session
+  }
+  const next = cloneWorkspaceSessionState(session)
+  const removedTabIds = new Set<string>()
+  for (const ownerKey of ownerKeys) {
+    deleteOwnerKeyedSessionFields(next, ownerKey, removedTabIds)
+  }
+  deleteScannedSessionFieldsForOwners(next, removedTabIds, (worktreeId) =>
+    ownerKeys.has(worktreeId)
   )
   return next
 }
@@ -2852,6 +2975,14 @@ export class Store {
         const migratedFloatingTerminalEnabled = floatingTerminalDefaultedForAllUsers
           ? (parsed.settings?.floatingTerminalEnabled ?? true)
           : true
+        // Why: the old off default persisted `false` for every profile, indistinguishable from a real opt-out — flip unmigrated profiles once (#10567).
+        const migratedOsc52Clipboard = normalizeOsc52ClipboardDefaultOn(parsed.settings)
+        const osc52ClipboardNoticePending =
+          osc52ClipboardDefaultOnOverridesPersistedOff(parsed.settings) ||
+          parsed.ui?.osc52ClipboardDefaultOnNoticePending === true
+        if (parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers !== true) {
+          this.loadNeedsSave = true
+        }
         const floatingTerminalCwdMigrated =
           parsed.settings?.floatingTerminalCwdMigratedToAppWorkspace === true
         // Why: an earlier migration wrote '' for the notes dir; floating terminals still open at home, notes use a separate IPC.
@@ -3091,6 +3222,7 @@ export class Store {
             localWindowsRuntimeDefault: migratedWindowsRuntimeDefault,
             localAccountRuntime: migratedLocalAccountRuntime,
             localAccountRuntimeDefaultedToAutoForAllUsers: true,
+            ...migratedOsc52Clipboard,
             floatingTerminalEnabled: migratedFloatingTerminalEnabled,
             floatingTerminalDefaultedForAllUsers: true,
             floatingTerminalCwd: migratedFloatingTerminalCwd,
@@ -3180,6 +3312,8 @@ export class Store {
             const inlineAgentsMigrated = parsed.ui?._inlineAgentsDefaultedForAllUsers === true
             const expandedCardPropsMigrated =
               parsed.ui?._expandedWorktreeCardPropertiesDefaulted === true
+            const jiraIssueCardPropDefaulted =
+              parsed.ui?._jiraIssueWorktreeCardPropertyDefaulted === true
             const hadExperimentOn = readDeprecatedExperimentFlag(parsed)
             const deliberateUncheck =
               hadExperimentOn &&
@@ -3218,7 +3352,12 @@ export class Store {
                 }
                 return next
               })()
-              const normalized = normalizeWorktreeCardProperties(expandedCandidate)
+              // Why: 'jira-issue' joined the defaults after the expansion migration already stamped upgraded profiles, so it needs its own one-shot backfill.
+              const jiraCandidate =
+                jiraIssueCardPropDefaulted || expandedCandidate.includes('jira-issue')
+                  ? expandedCandidate
+                  : [...expandedCandidate, 'jira-issue' as const]
+              const normalized = normalizeWorktreeCardProperties(jiraCandidate)
               const changed =
                 normalized.length !== rawCardProps.length ||
                 normalized.some((property, index) => property !== rawCardProps[index])
@@ -3227,7 +3366,8 @@ export class Store {
             if (
               migratedCardProps !== undefined ||
               !inlineAgentsMigrated ||
-              !expandedCardPropsMigrated
+              !expandedCardPropsMigrated ||
+              !jiraIssueCardPropDefaulted
             ) {
               this.loadNeedsSave = true
             }
@@ -3276,6 +3416,9 @@ export class Store {
                   : false,
               setupGuideBrowserMilestoneLegacyComplete:
                 parsed.ui?.setupGuideBrowserMilestoneLegacyComplete === true,
+              // Why persist rather than notify inline: the flip lands during load, before any
+              // window exists, and it must survive a crash before the user ever sees the notice.
+              osc52ClipboardDefaultOnNoticePending: osc52ClipboardNoticePending,
               sortBy: migrate ? ('smart' as const) : sort,
               showDotfilesByWorktree: normalizeShowDotfilesByWorktree(
                 parsed.ui?.showDotfilesByWorktree
@@ -3292,7 +3435,8 @@ export class Store {
               // Why: keep stamping the legacy flag for rollback forward-compat; the new flag actually gates the migration.
               _inlineAgentsDefaultedForExperiment: true,
               _inlineAgentsDefaultedForAllUsers: true,
-              _expandedWorktreeCardPropertiesDefaulted: true
+              _expandedWorktreeCardPropertiesDefaulted: true,
+              _jiraIssueWorktreeCardPropertyDefaulted: true
             }
           })(),
           // Why: volatile schema; zod-validate workspaceSession at read so a bad payload falls to defaults, not a renderer crash.
@@ -3412,6 +3556,10 @@ export class Store {
       this.loadNeedsSave = true
     }
     result = folderScopeConnectionMigration.state
+
+    if (normalizeWorktreeLinkedItemMetadata(result)) {
+      this.loadNeedsSave = true
+    }
 
     if (gcStaleWorktreeMeta(result) > 0) {
       this.loadNeedsSave = true
@@ -3621,12 +3769,19 @@ export class Store {
     // Why: on any write/rename failure, remove the tmp file so it doesn't leave a multi-MB orphan.
     let renamed = false
     try {
-      await writeFile(tmpFile, payload, 'utf-8')
+      // Why: fsync before rename, then fsync the directory; see writeFileDurable.
+      const handle = await open(tmpFile, 'w')
+      try {
+        await handle.writeFile(payload, 'utf-8')
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
       // Why: if flush() bumped writeGeneration mid-write, it already wrote fresher state; don't overwrite it.
       if (this.writeGeneration !== gen) {
         return
       }
-      await rename(tmpFile, dataFile)
+      await renameDurable(tmpFile, dataFile)
       renamed = true
       // Why re-check gen: a sync flush during the rename await may have written fresher state; don't record a stale hash over it.
       if (this.writeGeneration === gen) {
@@ -3667,8 +3822,9 @@ export class Store {
     // Why: on any write/rename failure, remove the tmp file so shutdown crashes don't leak orphans.
     let renamed = false
     try {
-      writeFileSync(tmpFile, payload, 'utf-8')
-      renameSync(tmpFile, dataFile)
+      // Why: fsync the temp file and the directory; a bare rename can survive as stale or empty
+      // content after power loss, losing projects/tabs back to the newest usable .bak slot.
+      writeFileDurableSync(tmpFile, dataFile, payload)
       renamed = true
       this.lastWrittenStateHash = stateHash
     } finally {
@@ -3701,6 +3857,29 @@ export class Store {
 
   flushActiveViewPreferenceOrThrow(): void {
     this.activeViewPreference.flushOrThrow()
+  }
+
+  getCodexResetCreditAttemptLedger(): CodexResetCreditAttemptLedger {
+    return parseCodexResetCreditAttemptLedger(this.state.codexResetCreditAttemptLedger)
+  }
+
+  replaceCodexResetCreditAttemptLedgerAndFlush(ledger: CodexResetCreditAttemptLedger): void {
+    if (this.writesFrozen) {
+      throw new Error('Cannot persist Codex reset-credit attempts while writes are frozen')
+    }
+    const next = parseCodexResetCreditAttemptLedger(ledger)
+    const previous = this.state.codexResetCreditAttemptLedger
+      ? structuredClone(this.state.codexResetCreditAttemptLedger)
+      : undefined
+    this.state.codexResetCreditAttemptLedger = next
+    try {
+      this.flushOrThrow()
+    } catch (error) {
+      // Why: callers use a successful return as the durability barrier before
+      // handing a scarce-credit mutation to the provider.
+      this.state.codexResetCreditAttemptLedger = previous
+      throw error
+    }
   }
 
   // ── Repos ──────────────────────────────────────────────────────────
@@ -3957,6 +4136,7 @@ export class Store {
     name?: string
     folderPath?: string | null
     linkedTask?: FolderWorkspace['linkedTask']
+    linkedTaskSourceContext?: FolderWorkspace['linkedTaskSourceContext']
     connectionId?: string | null
     createdWithAgent?: FolderWorkspace['createdWithAgent']
     pendingFirstAgentMessageRename?: boolean
@@ -3972,13 +4152,18 @@ export class Store {
       throw new Error('Folder-backed project group not found.')
     }
     const now = Date.now()
+    const linkedTask = normalizeWorkspaceLinkedItem(input.linkedTask)
+    const sourceContext = normalizeStoredTaskSourceContext(input.linkedTaskSourceContext)
     const workspace: FolderWorkspace = {
       id: randomUUID(),
       projectGroupId: group.id,
       name: normalizeFolderWorkspaceName(input.name, `${group.name} workspace`),
       folderPath,
       connectionId: input.connectionId ?? group.connectionId ?? null,
-      linkedTask: input.linkedTask ?? null,
+      linkedTask,
+      linkedTaskSourceContext: isWorkspaceLinkedItemSourceContextMatch(linkedTask, sourceContext)
+        ? sourceContext
+        : null,
       comment: '',
       isArchived: false,
       isUnread: false,
@@ -4005,6 +4190,7 @@ export class Store {
         | 'name'
         | 'folderPath'
         | 'linkedTask'
+        | 'linkedTaskSourceContext'
         | 'comment'
         | 'isArchived'
         | 'isUnread'
@@ -4030,7 +4216,27 @@ export class Store {
       workspace.folderPath = updates.folderPath
     }
     if (updates.linkedTask !== undefined) {
-      workspace.linkedTask = updates.linkedTask
+      workspace.linkedTask = normalizeWorkspaceLinkedItem(updates.linkedTask)
+      if (
+        workspace.linkedTaskSourceContext &&
+        !isWorkspaceLinkedItemSourceContextMatch(
+          workspace.linkedTask,
+          workspace.linkedTaskSourceContext
+        )
+      ) {
+        workspace.linkedTaskSourceContext = null
+      }
+    }
+    if (updates.linkedTaskSourceContext !== undefined) {
+      const linkedTaskSourceContext = normalizeStoredTaskSourceContext(
+        updates.linkedTaskSourceContext
+      )
+      workspace.linkedTaskSourceContext = isWorkspaceLinkedItemSourceContextMatch(
+        workspace.linkedTask,
+        linkedTaskSourceContext
+      )
+        ? linkedTaskSourceContext
+        : null
     }
     if (updates.comment !== undefined) {
       workspace.comment = updates.comment
@@ -4245,9 +4451,63 @@ export class Store {
       hostMembership.set(key, result)
       return result
     }
+    // Why: session state (legacy blob + per-host partitions) references worktrees
+    // by the same `${repoId}::${path}` owner key; if it is not pruned here, a
+    // deleted project's worktrees stay in lastVisitedAtByWorktreeId /
+    // sleepingAgentSessionsByPaneKey and get re-materialized into worktreeMeta on
+    // the next launch, surfacing as an orphaned "unknown" workspace.
+    // worktreeMeta is host-classified via belongsToHost, but session partitions
+    // are keyed by host directly. A session owner key carries no host, and the
+    // same key can exist in multiple partitions (shared repo id/path across
+    // hosts). So for session cleanup we collect every prefix-matching owner key
+    // regardless of belongsToHost, and let the per-partition host gating below
+    // decide which partition to touch. (belongsToHost still governs
+    // worktreeMeta/lineage deletion. Collect before deleting worktreeMeta.)
+    const ownerKeysToPrune = new Set<string>()
+    const collectPrefixedKeys = (keys: Iterable<string>): void => {
+      for (const key of keys) {
+        if (key.startsWith(prefix)) {
+          ownerKeysToPrune.add(key)
+        }
+      }
+    }
+    collectPrefixedKeys(Object.keys(this.state.worktreeMeta))
+    collectPrefixedKeys(Object.keys(this.state.workspaceSession?.lastVisitedAtByWorktreeId ?? {}))
+    for (const session of Object.values(this.state.workspaceSessionsByHostId ?? {})) {
+      collectPrefixedKeys(Object.keys(session?.lastVisitedAtByWorktreeId ?? {}))
+    }
+
     for (const key of Object.keys(this.state.worktreeMeta)) {
       if (belongsToHost(key)) {
         delete this.state.worktreeMeta[key]
+      }
+    }
+    // Why: owner keys are `${repoId}::${path}` and do not carry a host, so a
+    // host-scoped prune (hostId != null) must only touch that host's session:
+    // the legacy blob is the local host's session, and each
+    // workspaceSessionsByHostId partition is one non-local host. Pruning every
+    // partition here would wipe a surviving host's tabs, sleeping-agent state,
+    // and active-worktree pointer for a shared repo id/path. A full removal
+    // (hostId === null) still clears every host.
+    const pruneLegacyLocalSession = hostId === null || hostId === LOCAL_EXECUTION_HOST_ID
+    const pruneAllHostPartitions = hostId === null
+    if (pruneLegacyLocalSession) {
+      this.state.workspaceSession = removeWorkspaceSessionOwners(
+        this.state.workspaceSession,
+        ownerKeysToPrune
+      )!
+    }
+    if (this.state.workspaceSessionsByHostId) {
+      for (const [partitionHostId, session] of Object.entries(
+        this.state.workspaceSessionsByHostId
+      )) {
+        if (!pruneAllHostPartitions && partitionHostId !== hostId) {
+          continue
+        }
+        const pruned = removeWorkspaceSessionOwners(session, ownerKeysToPrune)
+        if (pruned) {
+          this.state.workspaceSessionsByHostId[partitionHostId] = pruned
+        }
       }
     }
     for (const [childId, lineage] of Object.entries(this.state.worktreeLineageById)) {
@@ -4313,9 +4573,13 @@ export class Store {
     > & {
       sourceControlAi?: Repo['sourceControlAi'] | null
       externalWorktreeDiscoverySuppressedAt?: Repo['externalWorktreeDiscoverySuppressedAt'] | null
-    }
+    },
+    hostId?: ExecutionHostId
   ): Repo | null {
-    const repo = this.state.repos.find((r) => r.id === id)
+    const repo = this.state.repos.find(
+      (candidate) =>
+        candidate.id === id && (!hostId || getRepoExecutionHostId(candidate) === hostId)
+    )
     if (!repo) {
       return null
     }
@@ -4854,6 +5118,16 @@ export class Store {
   setWorktreeMeta(worktreeId: string, meta: Partial<WorktreeMeta>): WorktreeMeta {
     const existing = this.state.worktreeMeta[worktreeId] || getDefaultWorktreeMeta()
     const updated = { ...existing, ...meta }
+    updated.linkedWorkItem = normalizeWorkspaceLinkedItem(updated.linkedWorkItem)
+    const linkedTaskSourceContext = normalizeStoredTaskSourceContext(
+      updated.linkedTaskSourceContext
+    )
+    updated.linkedTaskSourceContext = isWorkspaceLinkedItemSourceContextMatch(
+      updated.linkedWorkItem,
+      linkedTaskSourceContext
+    )
+      ? linkedTaskSourceContext
+      : null
     if (!updated.instanceId) {
       updated.instanceId = randomUUID()
     }
@@ -5346,7 +5620,12 @@ export class Store {
       statusBarUsageMode: normalizeStatusBarUsageMode(this.state.ui?.statusBarUsageMode),
       // Why: strict boolean coercion so a missing/legacy value reads as false (first-run notice still fires).
       trayMinimizeNoticeShown: this.state.ui?.trayMinimizeNoticeShown === true,
+      osc52ClipboardDefaultOnNoticePending:
+        this.state.ui?.osc52ClipboardDefaultOnNoticePending === true,
       markdownTocPanelWidth: clampMarkdownTocPanelWidth(this.state.ui?.markdownTocPanelWidth),
+      combinedDiffFileTreeWidth: clampCombinedDiffFileTreeWidth(
+        this.state.ui?.combinedDiffFileTreeWidth
+      ),
       visibleWorkspaceHostIds: normalizeVisibleExecutionHostIds(
         this.state.ui?.visibleWorkspaceHostIds
       ),
@@ -5446,6 +5725,9 @@ export class Store {
       ),
       markdownTocPanelWidth: clampMarkdownTocPanelWidth(
         sanitizedUpdates.markdownTocPanelWidth ?? this.state.ui?.markdownTocPanelWidth
+      ),
+      combinedDiffFileTreeWidth: clampCombinedDiffFileTreeWidth(
+        sanitizedUpdates.combinedDiffFileTreeWidth ?? this.state.ui?.combinedDiffFileTreeWidth
       ),
       visibleWorkspaceHostIds:
         updates.visibleWorkspaceHostIds !== undefined
@@ -5600,6 +5882,17 @@ export class Store {
       return this.state.workspaceSession ?? getDefaultWorkspaceSession()
     }
     return this.state.workspaceSessionsByHostId?.[resolved] ?? getDefaultWorkspaceSession()
+  }
+
+  getWorkspaceSessionHostIds(): ExecutionHostId[] {
+    const hostIds = new Set<ExecutionHostId>([LOCAL_EXECUTION_HOST_ID])
+    for (const key of Object.keys(this.state.workspaceSessionsByHostId ?? {})) {
+      const hostId = normalizeExecutionHostId(key)
+      if (hostId) {
+        hostIds.add(hostId)
+      }
+    }
+    return [...hostIds]
   }
 
   readTerminalScrollbackSnapshot(ref: string): string | null {
@@ -6543,6 +6836,8 @@ function getDefaultWorktreeMeta(): WorktreeMeta {
     linkedBitbucketPR: null,
     linkedAzureDevOpsPR: null,
     linkedGiteaPR: null,
+    linkedWorkItem: null,
+    linkedTaskSourceContext: null,
     isArchived: false,
     isUnread: false,
     isPinned: false,

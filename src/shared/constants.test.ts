@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_TERMINAL_INACTIVE_PANE_OPACITY,
   getDefaultNotificationSettings,
   getDefaultPrimarySelectionMiddleClickPaste,
   getDefaultTerminalRightClickToPaste,
@@ -36,8 +37,19 @@ describe('getDefaultSettings', () => {
     expect(getDefaultSettings('/tmp').terminalCursorStyleDefaultedToBlock).toBe(true)
   })
 
+  it('allows OSC 52 clipboard writes by default for new settings', () => {
+    expect(getDefaultSettings('/tmp').terminalAllowOsc52Clipboard).toBe(true)
+    expect(getDefaultSettings('/tmp').terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
+  })
+
   it('enables separate light terminal theme by default', () => {
     expect(getDefaultSettings('/tmp').terminalUseSeparateLightTheme).toBe(true)
+  })
+
+  it('keeps inactive terminal panes readable by default', () => {
+    expect(getDefaultSettings('/tmp').terminalInactivePaneOpacity).toBe(
+      DEFAULT_TERMINAL_INACTIVE_PANE_OPACITY
+    )
   })
 
   it('asks before closing terminals with running processes by default', () => {
@@ -92,6 +104,7 @@ describe('getDefaultSettings', () => {
 
   it('keeps the agent dashboard popout disabled by default', () => {
     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBe(false)
+    expect(getDefaultSettings('/tmp').experimentalAgentDashboardShowIdle).toBe(false)
   })
 
   it('routes fresh Codex profiles through the real-home rollout by default', () => {})
