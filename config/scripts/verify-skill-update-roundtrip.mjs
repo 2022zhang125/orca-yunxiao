@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
   chmod,
   cp,
@@ -40,15 +40,32 @@ if (
   )
 }
 
-const sandbox = await mkdtemp(path.join(tmpdir(), 'orca-skill-update-roundtrip-'))
-const home = path.join(sandbox, 'home')
-const stateHome = path.join(home, '.state')
-const fakeBin = path.join(sandbox, 'bin')
 const targetName = 'orca-cli'
 const controlName = 'orchestration'
 const manifest = JSON.parse(await readFile('resources/skills/current-manifest.json', 'utf8'))
 const registry = JSON.parse(await readFile('resources/skills/snapshot-registry.json', 'utf8'))
 const releaseMapping = JSON.parse(await readFile('resources/skills/release-mapping.json', 'utf8'))
+
+const targetHistorical = historicalRelease(targetName)
+const controlHistorical = historicalRelease(controlName)
+// Why skip rather than fail: the replay rebuilds the historical packages out of
+// the tags those revisions shipped under, and a checkout that never received
+// them — a downstream mirror, a partial tag fetch — cannot run this at all.
+// Failing there reports an absent release history as a broken skill update.
+const missingReleaseTags = [targetHistorical.tag, controlHistorical.tag].filter(
+  (tag) => spawnSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`]).status !== 0
+)
+if (missingReleaseTags.length > 0) {
+  console.log(
+    `::notice title=Skill update round trip skipped::This checkout is missing the release tags the replay seeds from (${missingReleaseTags.join(', ')}).`
+  )
+  process.exit(0)
+}
+
+const sandbox = await mkdtemp(path.join(tmpdir(), 'orca-skill-update-roundtrip-'))
+const home = path.join(sandbox, 'home')
+const stateHome = path.join(home, '.state')
+const fakeBin = path.join(sandbox, 'bin')
 
 function currentSkill(name) {
   const skill = manifest.skills.find((entry) => entry.name === name)
@@ -161,8 +178,6 @@ function execSkills(args) {
 }
 
 try {
-  const targetHistorical = historicalRelease(targetName)
-  const controlHistorical = historicalRelease(controlName)
   await installFakeAgentCommands()
   await mkdir(path.join(home, '.codex'), { recursive: true })
   await mkdir(path.join(home, '.claude'), { recursive: true })
