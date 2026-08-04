@@ -1,13 +1,16 @@
-import { toast } from 'sonner'
-
 import { translate } from '@/i18n/i18n'
+import {
+  deliverYunxiaoChangeAnnouncements,
+  type YunxiaoChangeAnnouncement
+} from './yunxiao-change-announcement-delivery'
 import type { YunxiaoWorkItem } from '../../../shared/types'
 
 /**
- * Bottom-right toasts for remote 云效 changes: when a fresh list read lands,
- * items that appeared, changed, or left the list since the previous read of the
- * same list are announced, so edits made by teammates surface without watching
- * the Tasks page.
+ * Announcements for remote 云效 changes: when a fresh list read lands, items
+ * that appeared, changed, or left the list since the previous read of the same
+ * list are announced, so edits made by teammates surface without watching the
+ * Tasks page. Delivery picks the surface — toast on screen, native notification
+ * when the window is hidden.
  */
 
 // Snapshots keep the whole item, not only the compared fields: an item that left
@@ -194,22 +197,35 @@ export function announceYunxiaoWorkItemListChanges(
       }
     : {}
   if (announcements.length > MAX_INDIVIDUAL_TOASTS) {
-    toast.info(
-      translate(
-        'auto.components.TaskPage.yunxiao_toast_bulk_changes',
-        '{{value0}} 云效 work items changed',
-        { value0: announcements.length }
-      ),
-      viewAction
-    )
+    deliverYunxiaoChangeAnnouncements([
+      {
+        message: translate(
+          'auto.components.TaskPage.yunxiao_toast_bulk_changes',
+          '{{value0}} 云效 work items changed',
+          { value0: announcements.length }
+        ),
+        notification: { kind: 'bulk', count: announcements.length },
+        ...viewAction
+      }
+    ])
     return
   }
-  for (const { kind, workItem } of announcements) {
-    toast.info(toastMessage(kind, workItem), {
-      description: workItem.title,
-      ...viewAction
+  deliverYunxiaoChangeAnnouncements(
+    announcements.map(({ kind, workItem }): YunxiaoChangeAnnouncement => {
+      const isDeparture = kind === 'removed'
+      return {
+        message: toastMessage(kind, workItem),
+        description: workItem.title,
+        notification: {
+          kind,
+          serialNumber: workItem.serialNumber,
+          ...(kind === 'added' ? { workItemTypeName: workItem.workItemType.name } : {}),
+          ...(isDeparture ? {} : { statusName: workItem.status.name })
+        },
+        ...viewAction
+      }
     })
-  }
+  )
 }
 
 /** Drop baselines so a reconnect or account switch starts clean instead of diffing across identities. */

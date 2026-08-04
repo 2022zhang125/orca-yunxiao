@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
-import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
+import { installBackgroundPollInterval } from '@/lib/background-poll-interval'
 import {
   createYunxiaoChangePoll,
   YUNXIAO_CHANGE_POLL_INTERVAL_MS
@@ -9,12 +9,13 @@ import {
 import { useAppStore } from '@/store'
 
 /**
- * Keeps the 云效 change toasts arriving without anyone opening Tasks: re-reads
- * the related-to-me lists on an interval so the store's list-read path can
- * announce what a teammate added or changed.
+ * Keeps the 云效 change announcements arriving without anyone opening Tasks:
+ * re-reads the related-to-me lists on an interval so the store's list-read path
+ * can announce what a teammate added or changed.
  *
- * Paused while the window is hidden — toasts are in-app surfaces nobody can see
- * then, and the catch-up read on becoming visible reports what moved meanwhile.
+ * Runs while the window is hidden too. Being away from Orca is when a teammate's
+ * change is most worth hearing about, and the announcement switches to a native
+ * notification there, so a hidden window is no longer a reason to stop reading.
  */
 export function YunxiaoWorkItemChangePoller(): null {
   const runtimeContextKey = useAppStore((s) => getProviderRuntimeContextKey(s.settings))
@@ -45,7 +46,7 @@ export function YunxiaoWorkItemChangePoller(): null {
       invalidate: () => invalidateYunxiaoWorkItemLists(),
       read: (filter, limit) => listYunxiaoWorkItems(filter, limit)
     })
-    return installWindowVisibilityInterval({
+    return installBackgroundPollInterval({
       run: () => void poll(),
       intervalMs: YUNXIAO_CHANGE_POLL_INTERVAL_MS
     })

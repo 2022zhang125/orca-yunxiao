@@ -394,7 +394,7 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
       args: NotificationDispatchRequest
     ): NotificationDispatchResult | Promise<NotificationDispatchResult> => {
       // Why: light the tray attention dot before the cooldown/focus/enabled gates so they can't hold it back (clears on window show/restore; see index.ts).
-      if (args.source === 'agent-task-complete' || args.source === 'terminal-bell') {
+      if (args.source !== 'test') {
         const activeWindow = BrowserWindow.getAllWindows().find((win) => !win.isDestroyed()) ?? null
         if (!isMainWindowVisible(activeWindow)) {
           setTrayAttention(true)
@@ -416,7 +416,9 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
       const notificationOptions = buildNotificationOptions(args)
 
       // Why: desktop focus only means this computer sees the worktree; the paired phone may still need the alert.
-      if (runtime && args.source !== 'test') {
+      // Why 云效 is excluded: its watch is a desktop-window fallback, and mirroring
+      // every teammate edit to a phone is a push nobody opted into.
+      if (runtime && args.source !== 'test' && args.source !== 'yunxiao-work-item-change') {
         const dedupeKey = args.worktreeId ?? args.worktreeLabel ?? 'global'
         if (reserveNotificationCooldown(recentMobileNotifications, dedupeKey, Date.now())) {
           runtime.dispatchMobileNotification({

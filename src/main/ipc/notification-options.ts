@@ -1,3 +1,4 @@
+import { translateMain } from '../i18n/main-i18n'
 import type { NotificationDispatchRequest } from '../../shared/types'
 
 const NOTIFICATION_AGENT_LABEL_MAX_LENGTH = 40
@@ -40,12 +41,64 @@ export function buildNotificationOptions(args: NotificationDispatchRequest): {
     }
   }
 
+  if (args.source === 'yunxiao-work-item-change') {
+    return buildYunxiaoWorkItemChangeNotificationOptions(args)
+  }
+
   const richOptions = buildAgentTaskCompleteNotificationOptions(args)
   if (richOptions) {
     return richOptions
   }
 
   return buildAgentTaskCompleteFallbackNotificationOptions(args)
+}
+
+/** Native copy for a 云效 change, keyed off the same locale strings the in-app
+ *  toast renders so both surfaces stay worded alike in every language. */
+function buildYunxiaoWorkItemChangeNotificationOptions(args: NotificationDispatchRequest): {
+  title: string
+  body: string
+} {
+  const change = args.yunxiaoChange
+  const body = change?.itemTitle ?? ''
+  if (!change || change.kind === 'bulk') {
+    return {
+      title: translateMain(
+        'auto.components.TaskPage.yunxiao_toast_bulk_changes',
+        '{{value0}} 云效 work items changed',
+        { value0: change?.count ?? 0 }
+      ),
+      body: ''
+    }
+  }
+  if (change.kind === 'added') {
+    return {
+      title: translateMain(
+        'auto.components.TaskPage.yunxiao_toast_new_item',
+        'New {{value0}}: {{value1}}',
+        { value0: change.workItemTypeName ?? '', value1: change.serialNumber ?? '' }
+      ),
+      body
+    }
+  }
+  if (change.kind === 'removed') {
+    return {
+      title: translateMain(
+        'auto.components.TaskPage.yunxiao_toast_item_unassigned',
+        '{{value0}} is no longer assigned to you',
+        { value0: change.serialNumber ?? '' }
+      ),
+      body
+    }
+  }
+  return {
+    title: translateMain(
+      'auto.components.TaskPage.yunxiao_toast_item_updated',
+      '{{value0}} updated ({{value1}})',
+      { value0: change.serialNumber ?? '', value1: change.statusName ?? '' }
+    ),
+    body
+  }
 }
 
 function buildAgentTaskCompleteNotificationOptions(

@@ -3191,7 +3191,27 @@ export type GhosttyImportPreview = {
 // Subset of onboarding Ghostty DiscoveryState statuses that emit telemetry; UI-only 'idle'/'detecting' don't.
 export type DiscoveryStatusEmitted = 'found' | 'absent' | 'imported'
 
-export type NotificationEventSource = 'agent-task-complete' | 'terminal-bell' | 'test'
+export type NotificationEventSource =
+  | 'agent-task-complete'
+  | 'terminal-bell'
+  | 'yunxiao-work-item-change'
+  | 'test'
+
+/** What a 云效 change announcement says, for the native notification a hidden
+ *  window falls back to. Structured rather than pre-rendered so main builds the
+ *  copy from the same locale keys the in-app toast uses. */
+export type YunxiaoWorkItemChangeNotification = {
+  /** `bulk` collapses a batch too large to name item by item. */
+  kind: 'added' | 'updated' | 'removed' | 'bulk'
+  /** Item count; only meaningful for `bulk`. */
+  count?: number
+  serialNumber?: string
+  /** Localized work-item type name, e.g. 缺陷. */
+  workItemTypeName?: string
+  /** Localized status name, for an `updated` announcement. */
+  statusName?: string
+  itemTitle?: string
+}
 
 export type NotificationDispatchRequest = {
   source: NotificationEventSource
@@ -3213,6 +3233,8 @@ export type NotificationDispatchRequest = {
   agentToolInput?: string
   agentLastAssistantMessage?: string
   agentInterrupted?: boolean
+  /** Set for the `yunxiao-work-item-change` source. */
+  yunxiaoChange?: YunxiaoWorkItemChangeNotification
 }
 
 export type NotificationDispatchResult = {
