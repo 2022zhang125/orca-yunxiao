@@ -14,8 +14,9 @@ import { useAppStore } from '@/store'
  * can announce what a teammate added or changed.
  *
  * Runs while the window is hidden too. Being away from Orca is when a teammate's
- * change is most worth hearing about, and the announcement switches to a native
- * notification there, so a hidden window is no longer a reason to stop reading.
+ * change is most worth hearing about, and delivery switches to a native
+ * notification whenever Orca isn't the window in front, so neither a hidden nor
+ * a backgrounded window is a reason to stop reading.
  */
 export function YunxiaoWorkItemChangePoller(): null {
   const runtimeContextKey = useAppStore((s) => getProviderRuntimeContextKey(s.settings))

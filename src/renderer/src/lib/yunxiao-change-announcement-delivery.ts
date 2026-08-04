@@ -1,12 +1,15 @@
 import { toast } from 'sonner'
 
-import { isWindowVisible } from './window-visibility-interval'
+import { isWindowInForeground } from './window-foreground'
 import type { YunxiaoWorkItemChangeNotification } from '../../../shared/types'
 
 /**
- * Where a 云效 change announcement goes. A toast only exists on screen, so a
- * hidden window would drop the announcement it just polled for — the native
- * notification is what makes background watching worth doing at all.
+ * Where a 云效 change announcement goes. A toast is only seen by someone looking
+ * at Orca, so anything else — minimized, or just sitting behind the editor the
+ * user is coding in — takes the native notification. That backgrounded case is
+ * the whole point of watching, and it is not a hidden window: Electron reports
+ * an unfocused window as visible, so routing on visibility toasted into a window
+ * the user could not see until they switched to it.
  */
 
 export type YunxiaoChangeAnnouncement = {
@@ -42,7 +45,7 @@ function toBatchNotification(
 export function deliverYunxiaoChangeAnnouncements(
   announcements: readonly YunxiaoChangeAnnouncement[]
 ): void {
-  if (isWindowVisible()) {
+  if (isWindowInForeground()) {
     for (const announcement of announcements) {
       toast.info(announcement.message, {
         ...(announcement.description ? { description: announcement.description } : {}),

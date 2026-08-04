@@ -24,9 +24,10 @@ function announcement(overrides: Partial<YunxiaoChangeAnnouncement> = {}) {
   }
 }
 
-function stubVisibility(state: DocumentVisibilityState): void {
+function stubVisibility(state: DocumentVisibilityState, focused = true): void {
   vi.stubGlobal('document', {
     visibilityState: state,
+    hasFocus: () => focused,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
   })
@@ -45,7 +46,7 @@ describe('deliverYunxiaoChangeAnnouncements', () => {
     toastInfo.mockClear()
   })
 
-  it('toasts every announcement while the window is on screen', () => {
+  it('toasts every announcement while the user is looking at Orca', () => {
     stubVisibility('visible')
     const dispatch = stubNotificationApi()
 
@@ -56,6 +57,18 @@ describe('deliverYunxiaoChangeAnnouncements', () => {
 
     expect(toastInfo).toHaveBeenCalledTimes(2)
     expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  // Why this case at all: Electron reports a window sitting behind the user's
+  // editor as visible, and that is the case the whole watch exists for.
+  it('sends a native notification while Orca is on screen but not in front', () => {
+    stubVisibility('visible', false)
+    const dispatch = stubNotificationApi()
+
+    deliverYunxiaoChangeAnnouncements([announcement()])
+
+    expect(toastInfo).not.toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalledTimes(1)
   })
 
   it('sends a native notification instead of a toast nobody can see when hidden', () => {
