@@ -306,6 +306,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     // settings objects (which omit them) keep the default-on behavior.
     terminalSshViewParking: true,
     terminalHiddenWorktreeRetentionBudget: true,
+    browserGuestWorktreeRetentionBudget: true,
     terminalMainSideEffectAuthority: true,
     terminalHiddenDeliveryGate: true,
     terminalModelQueryAuthority: true,
@@ -352,6 +353,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     mobileAutoRestoreFitMs: null,
     // Why: Anywhere (Relay + local) is the default; local-only is written only on explicit same-network choice.
     mobilePairingConnectionMode: 'automatic',
+    mobilePairingCustomAddress: null,
+    mobilePairingCustomAddresses: [],
     // Why: off keeps the cosmetic overlay unmounted for users who never opt in.
     experimentalPet: false,
     experimentalActivity: false,
@@ -401,7 +404,9 @@ export function getDefaultVoiceSettings(): VoiceSettings {
     dictationMode: 'toggle' as const,
     terminalConfirmBeforeInsert: false,
     userModels: [],
-    openAiApiKeyConfigured: false
+    openAiApiKeyConfigured: false,
+    microphoneDeviceId: null,
+    microphoneDeviceLabel: null
   }
 }
 
@@ -437,6 +442,7 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
     sshTargets: [],
     deletedSshConfigAliases: [],
     sshRemotePtyLeases: [],
+    sshPtyConsumerRecoveries: [],
     claudeLivePtySessionIds: [],
     migrationUnsupportedPtyEntries: [],
     legacyPaneKeyAliasEntries: [],
