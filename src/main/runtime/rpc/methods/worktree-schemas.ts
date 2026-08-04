@@ -167,6 +167,9 @@ export const WorktreeCreate = z
       )
       .pipe(z.union([z.enum(['run', 'skip', 'inherit']), z.undefined()]))
       .optional(),
+    // Why: honored only by a local create — the runtime's own create path has no
+    // symlink support, so an older runtime ignoring this just runs setup.
+    shareDependencyDirectories: z.boolean().optional(),
     // Why: some clients (e.g. desktop) pass a pre-built launch command so the
     // first terminal pane launches the selected agent instead of an idle shell.
     // Clients that can't quote for the host shell send `startupAgent` instead.

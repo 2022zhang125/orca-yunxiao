@@ -3686,6 +3686,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     const automationProvenanceRequest = options?.automationProvenanceRequest
     const linkedWorkItem = options?.linkedWorkItem
     const linkedTaskSourceContext = options?.linkedTaskSourceContext
+    const shareDependencyDirectories = options?.shareDependencyDirectories
     try {
       for (let attempt = 0; attempt < CLIENT_WORKTREE_CREATE_MAX_ATTEMPTS; attempt += 1) {
         const candidateName = getClientWorktreeCreateCandidate(name, attempt)
@@ -3710,6 +3711,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
               ? { branchNameOverride: candidateBranchNameOverride }
               : {}),
             setupDecision,
+            ...(shareDependencyDirectories ? { shareDependencyDirectories } : {}),
             sparseCheckout,
             ...(displayName ? { displayName } : {}),
             ...(telemetrySource ? { telemetrySource } : {}),
@@ -3765,6 +3767,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
                       ? { branchNameOverride: candidateBranchNameOverride }
                       : {}),
                     setupDecision,
+                    ...(shareDependencyDirectories ? { shareDependencyDirectories } : {}),
                     sparseCheckout,
                     ...(displayName ? { displayName } : {}),
                     ...(telemetrySource ? { telemetrySource } : {}),

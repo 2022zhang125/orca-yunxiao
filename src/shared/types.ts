@@ -2266,6 +2266,12 @@ export type CreateWorktreeArgs = {
    *  legitimately contains `/` while the worktree directory must not. */
   branchNameOverride?: string
   setupDecision?: SetupDecision
+  /** Symlink the primary checkout's installed dependency directories into the
+   *  new worktree instead of letting setup install its own copy. When any are
+   *  shared, `setupDecision` is forced to `skip` for that create — the point is
+   *  to not spend a `pnpm install` per throwaway workspace. Local creates only;
+   *  the SSH path has no symlink support. */
+  shareDependencyDirectories?: boolean
   sparseCheckout?: CreateSparseCheckoutRequest
   linkedIssue?: number
   linkedPR?: number

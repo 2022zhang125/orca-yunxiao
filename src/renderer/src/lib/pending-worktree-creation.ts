@@ -66,6 +66,9 @@ export type WorktreeCreationRequest = {
   baseBranch?: string
   compareBaseRef?: string
   setupDecision: SetupDecision
+  /** Reuse the primary checkout's installed dependencies via symlink rather than
+   *  running setup for this workspace. See `CreateWorktreeArgs`. */
+  shareDependencyDirectories?: boolean
   sparseCheckout?: CreateSparseCheckoutRequest
   telemetrySource?: WorkspaceCreateTelemetrySource
   linkedIssue?: number

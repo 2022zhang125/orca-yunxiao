@@ -47,6 +47,8 @@ const {
   getDefaultTabsLaunchMock,
   parseOrcaYamlMock,
   shouldRunSetupForCreateMock,
+  createWorktreeSharedPathsMock,
+  resolveWorktreeDependencyDirectoriesMock,
   buildPosixRunnerScriptMock,
   buildWindowsRunnerScriptMock,
   getSetupRunnerEnvVarsMock,
@@ -98,6 +100,8 @@ const {
   getDefaultTabsLaunchMock: vi.fn(),
   parseOrcaYamlMock: vi.fn(),
   shouldRunSetupForCreateMock: vi.fn(),
+  createWorktreeSharedPathsMock: vi.fn(),
+  resolveWorktreeDependencyDirectoriesMock: vi.fn(),
   buildPosixRunnerScriptMock: vi.fn(),
   buildWindowsRunnerScriptMock: vi.fn(),
   getSetupRunnerEnvVarsMock: vi.fn(),
@@ -182,8 +186,13 @@ vi.mock('../providers/ssh-filesystem-dispatch', () => ({
 vi.mock('./worktree-symlinks', () => ({
   createWorktreeCopiedPaths: vi.fn(),
   createWorktreeLinkedPaths: vi.fn(),
+  createWorktreeSharedPaths: createWorktreeSharedPathsMock,
   findExistingWorktreeSymlinkPaths: findExistingWorktreeSymlinkPathsMock,
   removeWorktreeLinkedPaths: removeWorktreeLinkedPathsMock
+}))
+
+vi.mock('../git/worktree-dependency-directories', () => ({
+  resolveWorktreeDependencyDirectories: resolveWorktreeDependencyDirectoriesMock
 }))
 
 vi.mock('./ssh', () => ({
@@ -374,6 +383,8 @@ describe('registerWorktreeHandlers', () => {
       getSetupRunnerEnvVarsMock,
       resolveSetupRunnerShellMock,
       shouldRunSetupForCreateMock,
+      createWorktreeSharedPathsMock,
+      resolveWorktreeDependencyDirectoriesMock,
       runHookMock,
       hasHooksFileMock,
       loadHooksMock,
@@ -484,6 +495,8 @@ describe('registerWorktreeHandlers', () => {
     getDefaultTabsLaunchMock.mockReturnValue(undefined)
     parseOrcaYamlMock.mockReturnValue(null)
     shouldRunSetupForCreateMock.mockReturnValue(false)
+    createWorktreeSharedPathsMock.mockResolvedValue(undefined)
+    resolveWorktreeDependencyDirectoriesMock.mockResolvedValue([])
     buildPosixRunnerScriptMock.mockImplementation(
       (script: string) => `#!/usr/bin/env bash\nset -e\n${script.replace(/\r\n/g, '\n')}\n`
     )
@@ -1213,6 +1226,68 @@ describe('registerWorktreeHandlers', () => {
         'spawn_startup_terminal'
       ])
     )
+  })
+
+  it('symlinks the primary checkout dependency directories and skips setup for that create', async () => {
+    addWorktreeMock.mockResolvedValue({})
+    listWorktreesMock.mockResolvedValueOnce([
+      {
+        path: '/workspace/fix-demo-8',
+        head: 'def',
+        branch: 'fix-demo-8',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ])
+    getEffectiveHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    getEffectiveHooksFromConfigMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    resolveWorktreeDependencyDirectoriesMock.mockResolvedValue([
+      'mobile/node_modules',
+      'node_modules'
+    ])
+
+    await handlers['worktrees:create'](null, {
+      repoId: 'repo-1',
+      name: 'fix-demo-8',
+      shareDependencyDirectories: true,
+      setupDecision: 'run'
+    })
+
+    expect(createWorktreeSharedPathsMock).toHaveBeenCalledWith(
+      '/workspace/repo',
+      '/workspace/fix-demo-8',
+      ['mobile/node_modules', 'node_modules']
+    )
+    // Why assert the argument rather than whether setup ran: the policy helper is
+    // mocked, so the downgraded decision is the only observable signal.
+    expect(shouldRunSetupForCreateMock).toHaveBeenCalledWith(expect.anything(), 'skip')
+    expect(shouldRunSetupForCreateMock).not.toHaveBeenCalledWith(expect.anything(), 'run')
+  })
+
+  it('still runs setup when the primary checkout has no dependencies to share', async () => {
+    addWorktreeMock.mockResolvedValue({})
+    listWorktreesMock.mockResolvedValueOnce([
+      {
+        path: '/workspace/fix-demo-8',
+        head: 'def',
+        branch: 'fix-demo-8',
+        isBare: false,
+        isMainWorktree: false
+      }
+    ])
+    getEffectiveHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    getEffectiveHooksFromConfigMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    resolveWorktreeDependencyDirectoriesMock.mockResolvedValue([])
+
+    await handlers['worktrees:create'](null, {
+      repoId: 'repo-1',
+      name: 'fix-demo-8',
+      shareDependencyDirectories: true,
+      setupDecision: 'run'
+    })
+
+    expect(createWorktreeSharedPathsMock).not.toHaveBeenCalled()
+    expect(shouldRunSetupForCreateMock).toHaveBeenCalledWith(expect.anything(), 'run')
   })
 
   it('returns the wrapped setup command when startup spawned but setup creation failed', async () => {

@@ -895,6 +895,7 @@ import {
   getWorktreeSharedLinkPaths,
   resolveWorktreeSharedDirectories
 } from '../git/worktree-shared-directories'
+import { resolveWorktreeDependencyDirectories } from '../git/worktree-dependency-directories'
 import { deleteWorktreeHistoryDir } from '../terminal-history-deletion'
 import {
   cleanupUnusedWorktreePushTargetRemote,
@@ -20863,6 +20864,9 @@ export class OrcaRuntimeService {
     runHooks?: boolean
     activate?: boolean
     setupDecision?: 'run' | 'skip' | 'inherit'
+    /** Symlink the primary checkout's installed dependency directories instead of
+     *  installing per worktree; forces this create's setup decision to `skip`. */
+    shareDependencyDirectories?: boolean
     awaitTerminalProvisioning?: boolean
     observeSetupCompletion?: boolean
     createdWithAgent?: TuiAgent
@@ -21585,12 +21589,21 @@ export class OrcaRuntimeService {
       await createWorktreeLinkedPaths(repo.path, created.path, symlinkPaths)
     }
 
+    const sharedDependencyDirectories = args.shareDependencyDirectories
+      ? await resolveWorktreeDependencyDirectories(repo.path, localWorktreeGitOptions)
+      : []
+
     // Why: project-level `orca.yaml` shared directories add to (never replace) the
     // per-user setting, so a repo's shared dirs reach every teammate (issue #10451).
-    const sharedDirectories = await resolveWorktreeSharedDirectories(
+    const configuredSharedDirectories = await resolveWorktreeSharedDirectories(
       repo.path,
       localWorktreeGitOptions
     )
+    // Callers that share dependencies (the one-click fix flow) reuse the primary
+    // checkout's installed directories rather than paying an install per worktree.
+    const sharedDirectories = Array.from(
+      new Set([...configuredSharedDirectories, ...sharedDependencyDirectories])
+    ).sort()
     if (sharedDirectories.length > 0) {
       await createWorktreeSharedPaths(repo.path, created.path, sharedDirectories)
     }
@@ -21625,7 +21638,14 @@ export class OrcaRuntimeService {
     // script runs. 'skip' suppresses it, 'run' forces it, 'inherit' (default)
     // defers to the repo's orca.yaml setupRunPolicy. runHooks === true maps
     // to 'run' for backwards compatibility with the desktop create flow.
-    const effectiveDecision = args.runHooks ? 'run' : (args.setupDecision ?? 'inherit')
+    // Shared dependencies make the install redundant, so the create that linked
+    // them skips setup; with nothing shared the caller's decision stands.
+    const effectiveDecision =
+      sharedDependencyDirectories.length > 0
+        ? 'skip'
+        : args.runHooks
+          ? 'run'
+          : (args.setupDecision ?? 'inherit')
     let defaultTabs: CreateWorktreeResult['defaultTabs']
     try {
       defaultTabs = getDefaultTabsLaunch(yamlHooks, repo, effectiveDecision)

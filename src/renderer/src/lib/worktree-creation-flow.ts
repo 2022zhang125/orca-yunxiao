@@ -152,6 +152,9 @@ async function executeWorktreeCreation(
             : {}),
           ...(preparedRequest.linkedTaskSourceContext !== undefined
             ? { linkedTaskSourceContext: preparedRequest.linkedTaskSourceContext }
+            : {}),
+          ...(preparedRequest.shareDependencyDirectories
+            ? { shareDependencyDirectories: true }
             : {})
         }
       )

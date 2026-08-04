@@ -16,6 +16,7 @@ import type {
   LocalBaseRefRefreshResult,
   LocalBaseRefUpdateSuggestion,
   Repo,
+  SetupDecision,
   Worktree,
   WorktreeCreateBaseFallback,
   WorktreeHeadIdentity,
@@ -111,6 +112,7 @@ import {
 import { formatWorktreeIncludeCopyWarning } from './worktree-include-copy-budget'
 import { resolveWorktreeIncludePaths } from '../git/worktree-include-file'
 import { resolveWorktreeSharedDirectories } from '../git/worktree-shared-directories'
+import { resolveWorktreeDependencyDirectories } from '../git/worktree-dependency-directories'
 import { normalizeSparseDirectories } from './sparse-checkout-directories'
 import { joinWorktreeRelativePath } from '../runtime/runtime-relative-paths'
 import type { IFilesystemProvider } from '../providers/types'
@@ -2051,10 +2053,25 @@ export async function createLocalWorktree(
   }
   const workspaceRoot = computeWorkspaceRoot(repo.path, worktreePathSettings)
 
+  // Why: callers that share the primary checkout's dependency directories (the
+  // one-click fix flow) would otherwise reinstall them per worktree — a batch of
+  // fixes meant a `pnpm install` each. Resolved before the setup gate below so a
+  // shared install downgrades this create's decision to `skip` instead of
+  // launching a redundant install, and reused for the symlink step after create.
+  const sharedDependencyDirectories = args.shareDependencyDirectories
+    ? await timing.time('resolve_dependency_directories', () =>
+        resolveWorktreeDependencyDirectories(repo.path, localWorktreeGitOptions)
+      )
+    : []
+  // Nothing installed in the primary checkout means there is nothing to share,
+  // so setup still runs — otherwise the worktree would start with no deps.
+  const setupDecision: SetupDecision | undefined =
+    sharedDependencyDirectories.length > 0 ? 'skip' : args.setupDecision
+
   // Why: this validation doesn't depend on remote refs, so it can overlap a required remote-tracking base refresh.
   const primarySetupScript = getEffectiveHooks(repo)?.scripts.setup
   if (primarySetupScript) {
-    shouldRunSetupForCreate(repo, args.setupDecision)
+    shouldRunSetupForCreate(repo, setupDecision)
   }
   const sparseDirectories = args.sparseCheckout
     ? normalizeSparseDirectories(args.sparseCheckout.directories)
@@ -2467,9 +2484,14 @@ export async function createLocalWorktree(
 
   // Why: project-level `orca.yaml` shared directories add to (never replace) the per-user
   // setting, so a repo's shared dirs reach every teammate (issue #10451).
-  const sharedDirectories = await timing.time('resolve_shared_directories', () =>
+  const configuredSharedDirectories = await timing.time('resolve_shared_directories', () =>
     resolveWorktreeSharedDirectories(repo.path, localWorktreeGitOptions)
   )
+  // Auto-detected dependency directories join the configured ones; `symlinkPaths`
+  // above already owns any entry it linked, so a duplicate would be skipped there.
+  const sharedDirectories = Array.from(
+    new Set([...configuredSharedDirectories, ...sharedDependencyDirectories])
+  ).sort()
   if (sharedDirectories.length > 0) {
     await timing.time('create_shared_directories', async () => {
       await createWorktreeSharedPaths(repo.path, created.path, sharedDirectories)
@@ -2503,7 +2525,7 @@ export async function createLocalWorktree(
     const createdYamlHooks = loadHooks(worktreePath)
     const createdEffectiveHooks = getEffectiveHooksFromConfig(repo, createdYamlHooks)
     try {
-      defaultTabs = getDefaultTabsLaunch(createdYamlHooks, repo, args.setupDecision)
+      defaultTabs = getDefaultTabsLaunch(createdYamlHooks, repo, setupDecision)
     } catch (error) {
       // Why: default tab commands share setup's run policy; if the target branch adds commands without a renderer decision, create the tabs but don't run them.
       console.warn(`[hooks] default tab commands skipped for ${worktreePath}:`, error)
@@ -2515,7 +2537,7 @@ export async function createLocalWorktree(
     let shouldLaunchSetup = false
     if (setupScript) {
       try {
-        shouldLaunchSetup = shouldRunSetupForCreate(repo, args.setupDecision)
+        shouldLaunchSetup = shouldRunSetupForCreate(repo, setupDecision)
       } catch (error) {
         // Why: target branch may add setup hooks the renderer never collected a decision for; worktree exists, so skip setup rather than fail creation.
         console.warn(`[hooks] setup hook skipped for ${worktreePath}:`, error)

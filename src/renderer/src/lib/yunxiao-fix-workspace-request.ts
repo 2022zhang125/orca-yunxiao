@@ -144,6 +144,12 @@ export function buildYunxiaoFixWorkspaceRequest(args: {
     // The task list row is the progress surface; the click must not yank the
     // user off the list they are batch-fixing from.
     stayOnCurrentView: true,
+    // A batch fix opens several workspaces at once, and each one running the
+    // repo's setup meant a parallel `pnpm install` per workspace — enough to
+    // saturate CPU and memory. Sharing the primary checkout's already-installed
+    // dependencies skips that entirely; `inherit` is the fallback for a primary
+    // checkout with nothing installed yet.
+    shareDependencyDirectories: true,
     setupDecision: 'inherit',
     telemetrySource: 'sidebar',
     agent: YUNXIAO_FIX_AGENT,

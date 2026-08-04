@@ -140,6 +140,7 @@ export const WORKTREE_METHODS: RpcMethod[] = [
             runHooks: params.runHooks === true,
             activate: params.activate === true,
             setupDecision: params.setupDecision,
+            shareDependencyDirectories: params.shareDependencyDirectories,
             createdWithAgent: params.createdWithAgent ?? params.startupAgent,
             automationProvenance,
             cliProvenance: buildCliWorkspaceProvenance(params.cliProvenanceRequest, {
