@@ -137,12 +137,27 @@ export type PendingWorktreeCreation = {
   request: WorktreeCreationRequest
 }
 
-/** Phase a create should report the moment it starts doing work. VM recipes must
- *  provision before a worktree can exist, so they lead with that step. */
-export function getInitialWorktreeCreationPhase(
-  request: Pick<WorktreeCreationRequest, 'ephemeralVmRecipe' | 'ephemeralVmRuntimeId'>
-): WorktreeCreationPhase {
-  return request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId ? 'provisioning-vm' : 'fetching'
+export function findPendingLinkedWorkItemCreationId(
+  pendingCreations: Readonly<Record<string, PendingWorktreeCreation>>,
+  request: Pick<
+    WorktreeCreationRequest,
+    'repoId' | 'linkedIssue' | 'linkedPR' | 'workspaceRunContext'
+  >
+): string | null {
+  if (request.linkedIssue == null && request.linkedPR == null) {
+    return null
+  }
+  const hostId = request.workspaceRunContext?.hostId ?? null
+  const match = Object.values(pendingCreations).find((entry) => {
+    const pending = entry.request
+    return (
+      pending.repoId === request.repoId &&
+      pending.linkedIssue === request.linkedIssue &&
+      pending.linkedPR === request.linkedPR &&
+      (pending.workspaceRunContext?.hostId ?? null) === hostId
+    )
+  })
+  return match?.creationId ?? null
 }
 
 /** Human-readable progress line for an in-flight create, shared by the in-frame

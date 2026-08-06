@@ -140,9 +140,11 @@ function makePendingCreation(request: WorktreeCreationRequest): PendingWorktreeC
   }
 }
 
+// A macrotask hop rather than a fixed number of microtask flushes: the create
+// path's await chain grows (the 云效 stamp is one such link), and counting ticks
+// makes every addition silently strand these assertions.
 async function flushAsyncWorktreeCreation(): Promise<void> {
-  await Promise.resolve()
-  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 describe('runBackgroundWorktreeCreation', () => {
