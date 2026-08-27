@@ -106,6 +106,8 @@ import {
 } from '../../shared/agent-prompt-injection'
 import {
   type AgentPromptActivity,
+  type AgentPromptWaitTextCache,
+  readAgentPromptWaitText,
   resolveAgentPromptEffectTimeoutMs,
   verifyAgentPromptSubmission
 } from './agent-prompt-submission-verification'
@@ -6097,7 +6099,8 @@ export class OrcaRuntimeService {
     method: string,
     params: unknown,
     timeoutMs?: number,
-    envelope?: RuntimeOrchestrationEnvelope
+    envelope?: RuntimeOrchestrationEnvelope,
+    internal?: { contractVerified?: boolean }
   ): Promise<unknown> {
     if (!this.orchestrationEnvironmentTransport) {
       throw new OrchestrationError(
@@ -6105,7 +6108,7 @@ export class OrcaRuntimeService {
         'Connected-server orchestration is unavailable in this runtime.'
       )
     }
-    if (isOrchestrationMutation(method, params)) {
+    if (isOrchestrationMutation(method, params) && !internal?.contractVerified) {
       const statusResponse = await this.orchestrationEnvironmentTransport.call(
         selector,
         'status.get',
@@ -19530,7 +19533,8 @@ export class OrcaRuntimeService {
 
   private getTerminalAgentStatusSnapshot(
     handle: string,
-    expectedPtyId: string
+    expectedPtyId: string,
+    waitTextOverride?: string
   ): TerminalAgentStatusSnapshot {
     const pty = this.getLivePtyForHandle(handle)
     if (pty) {
@@ -19550,11 +19554,9 @@ export class OrcaRuntimeService {
           { title: pty.pty.title, updatedAt: pty.pty.titleUpdatedAt },
           { title: pty.pty.lastOscTitle, updatedAt: pty.pty.lastOscTitleAt }
         )
-      const waitText = buildTerminalWaitText(
-        pty.pty.tailBuffer,
-        pty.pty.tailPartialLine,
-        pty.pty.preview
-      )
+      const waitText =
+        waitTextOverride ??
+        buildTerminalWaitText(pty.pty.tailBuffer, pty.pty.tailPartialLine, pty.pty.preview)
       return {
         waitText,
         waitBlockedAt: pty.pty.waitBlockedAt,
@@ -19582,7 +19584,9 @@ export class OrcaRuntimeService {
       { title: this.tabs.get(leaf.tabId)?.title, updatedAt: 0 }
     )
     return {
-      waitText: buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
+      waitText:
+        waitTextOverride ??
+        buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview),
       waitBlockedAt: leaf.waitBlockedAt,
       title: title?.title ?? null,
       titleStatus: title ? detectAgentStatusFromTitle(title.title) : leaf.lastAgentStatus,
@@ -20241,7 +20245,8 @@ export class OrcaRuntimeService {
     }
     assertAgentPromptRequestActive(options.signal)
     this.assertAgentPromptGeneration(ptyId, generation)
-    const baseline = this.getAgentPromptActivity(handle, ptyId)
+    const waitTextCache: AgentPromptWaitTextCache = {}
+    const baseline = this.getAgentPromptActivity(handle, ptyId, waitTextCache)
     this.assertAgentPromptPermissionSafe(permissionBaseline, baseline)
     const suffixWrote = this.ptyController?.write(ptyId, AGENT_PROMPT_SUBMIT) ?? false
     if (!suffixWrote) {
@@ -20249,7 +20254,7 @@ export class OrcaRuntimeService {
     }
     await verifyAgentPromptSubmission({
       baseline,
-      readActivity: () => this.getAgentPromptActivity(handle, ptyId),
+      readActivity: () => this.getAgentPromptActivity(handle, ptyId, waitTextCache),
       timeoutMs: resolveAgentPromptEffectTimeoutMs(this.getPtyAgent(ptyId)),
       signal: options.signal
     })
@@ -20278,8 +20283,13 @@ export class OrcaRuntimeService {
     }
   }
 
-  private getAgentPromptActivity(handle: string, ptyId: string): AgentPromptActivity {
+  private getAgentPromptActivity(
+    handle: string,
+    ptyId: string,
+    waitTextCache?: AgentPromptWaitTextCache
+  ): AgentPromptActivity {
     this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+    const outputSequence = this.getPtyOutputSequence(ptyId)
     const explicitCandidate = this.getFreshExplicitAgentStatusForHandle(handle)
     const explicitFloor = this.agentPromptExplicitStatusFloorByPtyId.get(ptyId)
     const explicit =
@@ -20297,7 +20307,14 @@ export class OrcaRuntimeService {
       (!explicit ||
         lifecycle.updatedAt > explicit.updatedAt ||
         (lifecycle.updatedAt === explicit.updatedAt && lifecycle.status === 'permission'))
-    const terminal = this.getTerminalAgentStatusSnapshot(handle, ptyId)
+    const waitText = waitTextCache
+      ? readAgentPromptWaitText(
+          waitTextCache,
+          outputSequence,
+          () => this.getTerminalAgentStatusSnapshot(handle, ptyId).waitText
+        )
+      : undefined
+    const terminal = this.getTerminalAgentStatusSnapshot(handle, ptyId, waitText)
     const status = this.hasAuthoritativeTerminalWaitPermission(terminal, explicit, lifecycle)
       ? 'permission'
       : lifecycleIsNewer
@@ -20312,7 +20329,7 @@ export class OrcaRuntimeService {
       // stateStartedAt, not updatedAt — same-state tool/prompt pings refresh updatedAt and would
       // otherwise pass off an in-progress turn as a new one.
       explicitWorkingStartedAt: explicit?.status === 'working' ? explicit.stateStartedAt : null,
-      outputSequence: this.getPtyOutputSequence(ptyId),
+      outputSequence,
       status
     }
   }
