@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { hasRemoteProviderRuntime } from '@/lib/provider-runtime-context'
-import { YUNXIAO_DEFAULT_ENDPOINT } from '../../../shared/types'
+import { YUNXIAO_DEFAULT_ENDPOINT } from '../../../shared/yunxiao-types'
 import { translate } from '@/i18n/i18n'
 
 type YunxiaoConnectDialogProps = {

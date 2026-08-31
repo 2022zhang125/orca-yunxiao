@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { TaskProvider } from '../../../../shared/types'
+import type { TaskProvider } from '../../../../shared/task-providers'
 import {
   GLOBAL_AGENT_SKILL_SOURCE_KINDS,
   useInstalledAgentSkillNames
@@ -25,11 +25,11 @@ export function useTaskSourceProviderReadiness(
     localPreflightContextKey(getLocalPreflightContext(s))
   )
   const jiraStatus = useAppStore((s) => s.jiraStatus)
+  const jiraStatusChecked = useAppStore((s) => s.jiraStatusChecked)
+  const jiraStatusContextKey = useAppStore((s) => s.jiraStatusContextKey)
   const yunxiaoStatus = useAppStore((s) => s.yunxiaoStatus)
   const yunxiaoStatusChecked = useAppStore((s) => s.yunxiaoStatusChecked)
   const yunxiaoStatusContextKey = useAppStore((s) => s.yunxiaoStatusContextKey)
-  const jiraStatusChecked = useAppStore((s) => s.jiraStatusChecked)
-  const jiraStatusContextKey = useAppStore((s) => s.jiraStatusContextKey)
   const linearConnected = useLinearProviderConnected()
   const linearStatusChecked = useAppStore((s) => s.linearStatusChecked)
   const linearStatusContextKey = useAppStore((s) => s.linearStatusContextKey)
@@ -61,11 +61,11 @@ export function useTaskSourceProviderReadiness(
     preflightStatus.glab.authenticated === true
   const jiraChecking = jiraStatusContextKey !== providerRuntimeContextKey || !jiraStatusChecked
   const jiraConnected = !jiraChecking && jiraStatus.connected === true
-  const linearChecking =
-    linearStatusContextKey !== providerRuntimeContextKey || !linearStatusChecked
   const yunxiaoChecking =
     yunxiaoStatusContextKey !== providerRuntimeContextKey || !yunxiaoStatusChecked
   const yunxiaoConnected = !yunxiaoChecking && yunxiaoStatus.connected === true
+  const linearChecking =
+    linearStatusContextKey !== providerRuntimeContextKey || !linearStatusChecked
   // Normalization returns a new array, so memoize by provider contents.
   const visibleProvidersKey = visibleProviders.join(',')
 

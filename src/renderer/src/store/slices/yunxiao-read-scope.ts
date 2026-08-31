@@ -1,6 +1,9 @@
 import type { AppState } from '../types'
-import type { YunxiaoAccountSelection, YunxiaoConnectionStatus } from '../../../../shared/types'
-import type { CacheEntry } from './github'
+import type {
+  YunxiaoAccountSelection,
+  YunxiaoConnectionStatus
+} from '../../../../shared/yunxiao-types'
+import type { CacheEntry } from '../github/cache-model'
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
   getTaskSourceCacheScope,

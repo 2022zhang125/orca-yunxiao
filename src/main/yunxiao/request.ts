@@ -1,7 +1,7 @@
 import { net, session } from 'electron'
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
 import { withSpan } from '../observability/tracer'
-import type { YunxiaoAccount } from '../../shared/types'
+import type { YunxiaoAccount } from '../../shared/yunxiao-types'
 
 const YUNXIAO_API_USER_AGENT = 'Orca'
 

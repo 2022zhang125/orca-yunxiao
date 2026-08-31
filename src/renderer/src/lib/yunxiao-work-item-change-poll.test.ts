@@ -5,7 +5,7 @@ import {
   YUNXIAO_CHANGE_POLL_LIMIT,
   YUNXIAO_WATCHED_FILTERS
 } from './yunxiao-work-item-change-poll'
-import type { YunxiaoWorkItemFilter } from '../../../shared/types'
+import type { YunxiaoWorkItemFilter } from '../../../shared/yunxiao-types'
 
 function deferred(): { promise: Promise<[]>; resolve: () => void } {
   let resolve!: () => void

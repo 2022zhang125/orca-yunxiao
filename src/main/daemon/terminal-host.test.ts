@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SESSION_FORCE_KILL_RETRY_MS, Session, type SubprocessHandle } from './session'
+import { Session } from './session'
+import { SESSION_FORCE_KILL_RETRY_MS } from './session-termination-controller'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import { TerminalHost } from './terminal-host'
-import type { TuiAgent } from '../../shared/types'
+import type { TuiAgent } from '../../shared/tui-agent'
 
 const killWithDescendantSweepMock = vi.hoisted(() => vi.fn())
 vi.mock('../pty-descendant-termination', () => ({
@@ -25,6 +27,7 @@ function createMockSubprocess(
     kill: vi.fn(() => {
       setTimeout(() => onExitCb?.(0), 5)
     }),
+    terminateOwnedTree: () => 'unavailable' as const,
     forceKill: vi.fn(() => onExitCb?.(137)),
     signal: vi.fn(),
     onData(cb) {
@@ -447,9 +450,6 @@ describe('TerminalHost', () => {
       await immediate
       expect(host.listSessions()).toHaveLength(0)
     })
-
-    // Immediate-kill physical-exit timeouts live in
-    // terminal-host-immediate-kill-physical-exit.test.ts.
 
     it('throws for non-existent session', () => {
       expect(() => host.kill('missing')).toThrow('Session not found')

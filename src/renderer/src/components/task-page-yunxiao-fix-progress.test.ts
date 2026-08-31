@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { indexFixWorktreesByWorkItem, summarizeFixPhase } from './task-page-yunxiao-fix-progress'
-import type { Worktree } from '../../../shared/types'
+import type { Worktree } from '../../../shared/worktree/types'
 
 function worktree(overrides: Partial<Worktree> & { id: string }): Worktree {
   return {

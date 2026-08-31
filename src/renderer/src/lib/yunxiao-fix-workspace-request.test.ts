@@ -4,7 +4,7 @@ import {
   buildYunxiaoFixWorkspaceName,
   withClaudeSkipPermissions
 } from './yunxiao-fix-workspace-request'
-import type { YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 function workItem(serialNumber: string): YunxiaoWorkItem {
   return {

@@ -1,10 +1,7 @@
 import { useAppStore } from '@/store'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
-import type { WorktreeStartupPayload } from '@/lib/worktree-activation'
-import type {
-  WorktreeCreationPhase,
-  WorktreeCreationRequest
-} from '@/lib/pending-worktree-creation'
+import type { WorktreeStartupPayload } from '@/lib/worktree-startup-payload'
+import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 
 // Why: mirrors the startup-opt the composer used to build inline. The renderer
 // only seeds the first terminal when the backend did not already spawn it.
@@ -43,8 +40,4 @@ export function getWorktreeCreationIndeterminate(request: WorktreeCreationReques
   return getActiveRuntimeTarget(useAppStore.getState().settings).kind !== 'local'
 }
 
-export function getInitialWorktreeCreationPhase(
-  request: Pick<WorktreeCreationRequest, 'ephemeralVmRecipe' | 'ephemeralVmRuntimeId'>
-): WorktreeCreationPhase {
-  return request.ephemeralVmRecipe && !request.ephemeralVmRuntimeId ? 'provisioning-vm' : 'fetching'
-}
+export { getInitialWorktreeCreationPhase } from './pending-worktree-creation'

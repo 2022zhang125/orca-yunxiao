@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { canFixYunxiaoWorkItem } from '@/components/task-page-yunxiao-status-tone'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
-import type { YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 export function YunxiaoWorkItemRowActions({
   workItem,

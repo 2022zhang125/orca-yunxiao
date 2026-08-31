@@ -1,4 +1,4 @@
-import type { YunxiaoWorkItem, YunxiaoWorkItemFilter } from '../../../shared/types'
+import type { YunxiaoWorkItem, YunxiaoWorkItemFilter } from '../../../shared/yunxiao-types'
 
 /**
  * 云效 exposes no push channel a desktop client can subscribe to — its webhooks

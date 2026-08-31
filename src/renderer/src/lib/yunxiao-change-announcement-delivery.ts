@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 
 import { isWindowInForeground } from './window-foreground'
-import type { YunxiaoWorkItemChangeNotification } from '../../../shared/types'
+import type { YunxiaoWorkItemChangeNotification } from '../../../shared/notification-settings-types'
 
 /**
  * Where a 云效 change announcement goes. A toast is only seen by someone looking

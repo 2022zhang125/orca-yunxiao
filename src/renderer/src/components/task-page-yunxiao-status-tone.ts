@@ -3,7 +3,7 @@ import {
   isYunxiaoReopenedStatus,
   isYunxiaoUnfixedStatus
 } from '../../../shared/yunxiao-defect-status'
-import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 export type YunxiaoStatusRef = { name: string; stage: YunxiaoStatusStage }
 

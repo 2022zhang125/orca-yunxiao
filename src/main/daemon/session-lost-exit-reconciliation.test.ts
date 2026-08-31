@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS, Session } from './session'
+import { Session } from './session'
+import { IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS } from './session-termination-controller'
 
 // A force-killed PTY normally proves its own death through the subprocess exit
 // event. When that event is lost — a Windows ConPTY handle held open by a
@@ -21,6 +22,7 @@ function createMockSubprocess() {
     resize(_cols: number, _rows: number) {},
     kill() {},
     forceKill() {},
+    terminateOwnedTree: () => 'unavailable' as const,
     signal(_sig: string) {},
     onData(_cb: (data: string) => void) {},
     onExit(cb: (code: number) => void) {

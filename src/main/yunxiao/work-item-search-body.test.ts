@@ -5,7 +5,7 @@ import type {
   YunxiaoStatusStage,
   YunxiaoWorkItem,
   YunxiaoWorkItemCategory
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 
 const base = { spaceId: 'space-1', limit: 50 }
 

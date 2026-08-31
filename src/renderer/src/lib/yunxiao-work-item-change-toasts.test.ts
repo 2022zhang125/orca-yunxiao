@@ -4,7 +4,7 @@ import {
   announceYunxiaoWorkItemListChanges,
   resetYunxiaoWorkItemChangeTracking
 } from './yunxiao-work-item-change-toasts'
-import type { YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 vi.mock('sonner', () => ({
   toast: { info: vi.fn(), warning: vi.fn(), success: vi.fn() }

@@ -1,7 +1,7 @@
 import { parseJiraIssueUrl } from './jira-issue-url'
 import { getWorkspaceSourceProvider } from './new-workspace/workspace-source'
 import type { TaskSourceContext } from './task-source-context'
-import type { WorkspaceLinkedItem } from './types'
+import type { WorkspaceLinkedItem } from './worktree/types'
 
 function resolveLinkedItemProvider(
   item: Pick<WorkspaceLinkedItem, 'type' | 'number' | 'url'> & Partial<WorkspaceLinkedItem>
@@ -17,7 +17,6 @@ function resolveLinkedItemProvider(
     title: item.title ?? '',
     ...(item.linearIdentifier ? { linearIdentifier: item.linearIdentifier } : {}),
     ...(item.jiraIdentifier ? { jiraIdentifier: item.jiraIdentifier } : {}),
-    ...(item.yunxiaoIdentifier ? { yunxiaoIdentifier: item.yunxiaoIdentifier } : {}),
     ...(item.repoId ? { repoId: item.repoId } : {})
   })
 }

@@ -6,8 +6,8 @@ import type {
   YunxiaoViewer,
   YunxiaoWorkItem,
   YunxiaoWorkItemFilter
-} from '../../../../shared/types'
-import type { CacheEntry } from './github'
+} from '../../../../shared/yunxiao-types'
+import type { CacheEntry } from '../github/cache-model'
 import {
   yunxiaoGetWorkItem,
   yunxiaoListWorkItems,
@@ -38,7 +38,6 @@ const inflightWorkItemRequests = new Map<
   string,
   InflightYunxiaoReadRequest<YunxiaoWorkItem | null>
 >()
-
 function clearYunxiaoInflight(): void {
   inflightWorkItemRequests.clear()
   clearYunxiaoListInflight()
@@ -205,12 +204,9 @@ export const createYunxiaoSlice: StateCreator<AppState, [], [], YunxiaoSlice> = 
     })
   },
 
-  // Why: the Tasks list owns its own fetch effect, so an outside caller — a
-  // change toast the user just clicked — can only force a re-read by dropping
-  // the cache and bumping a signal that effect depends on.
   requestYunxiaoListRefresh: () => {
     get().invalidateYunxiaoWorkItemLists()
-    set((s) => ({ yunxiaoListRefreshNonce: s.yunxiaoListRefreshNonce + 1 }))
+    set((state) => ({ yunxiaoListRefreshNonce: state.yunxiaoListRefreshNonce + 1 }))
   },
 
   patchYunxiaoWorkItem: (workItemId, patch, options) => {

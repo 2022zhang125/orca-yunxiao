@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { JiraConnectDialog } from '@/components/jira-connect-dialog'
-import { YunxiaoConnectDialog } from '@/components/yunxiao-connect-dialog'
 import { Button } from '@/components/ui/button'
 import { TaskSourceShowInTasksStep } from './TaskSourceShowInTasksStep'
 import { TaskSourceStepRow } from './TaskSourceStepRow'
@@ -117,56 +116,6 @@ export function JiraSetupSteps(
         />
       </ol>
       <JiraConnectDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onConnected={props.onConnected}
-      />
-    </>
-  )
-}
-
-export function YunxiaoSetupSteps(
-  props: ConnectStepProps & { onConnected: () => void; onOpenIntegrations: () => void }
-): React.JSX.Element {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const providerLabel = translate('auto.components.settings.TasksPane.yunxiao_label', '云效')
-
-  return (
-    <>
-      <ol className="divide-y divide-border/50">
-        <TaskSourceStepRow
-          index={1}
-          state={getConnectStepState(props)}
-          title={translate(
-            'auto.components.settings.TasksPane.connectYunxiaoTitle',
-            'Connect 云效'
-          )}
-          description={translate(
-            'auto.components.settings.TasksPane.connectYunxiaoDescription',
-            'Add a 云效 organization with a personal access token.'
-          )}
-          action={
-            <Button
-              type="button"
-              size="sm"
-              variant={props.connected ? 'outline' : 'default'}
-              onClick={props.connected ? props.onOpenIntegrations : () => setDialogOpen(true)}
-            >
-              {props.connected
-                ? translate('auto.components.settings.TasksPane.manageYunxiao', 'Manage tokens')
-                : translate('auto.components.settings.TasksPane.addYunxiao', 'Add 云效 access')}
-            </Button>
-          }
-        />
-        <TaskSourceShowInTasksStep
-          index={2}
-          providerLabel={providerLabel}
-          visible={props.visible}
-          canHide={props.canHide}
-          onToggleVisible={props.onToggleVisible}
-        />
-      </ol>
-      <YunxiaoConnectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onConnected={props.onConnected}

@@ -1,5 +1,5 @@
+import type { GlobalSettings } from '../../../shared/global-settings-types'
 import type {
-  GlobalSettings,
   YunxiaoAccountSelection,
   YunxiaoComment,
   YunxiaoConnectionStatus,
@@ -14,7 +14,7 @@ import type {
   YunxiaoWorkItemFilter,
   YunxiaoWorkItemType,
   YunxiaoWorkItemUpdate
-} from '../../../shared/types'
+} from '../../../shared/yunxiao-types'
 import { callRuntimeRpc, getActiveRuntimeTarget } from './runtime-rpc-client'
 import {
   getTaskSourceRuntimeSettings,

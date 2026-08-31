@@ -1,5 +1,6 @@
 import type { AgentDotState } from '@/components/AgentStateDot'
-import type { Worktree, YunxiaoWorkItem } from '../../../shared/types'
+import type { Worktree } from '../../../shared/worktree/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 /**
  * What the row shows once a fix workspace exists for the defect.

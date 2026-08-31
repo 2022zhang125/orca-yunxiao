@@ -16,7 +16,7 @@ import {
 } from '@/components/task-page-yunxiao-attachment-viewer'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
-import type { YunxiaoWorkItem, YunxiaoWorkItemFile } from '../../../shared/types'
+import type { YunxiaoWorkItem, YunxiaoWorkItemFile } from '../../../shared/yunxiao-types'
 
 /** Binds an attachment to the work item it belongs to, which the API needs. */
 export type YunxiaoWorkItemAttachmentResolver = (

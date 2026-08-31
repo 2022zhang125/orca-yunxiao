@@ -12,7 +12,7 @@ import {
   YUNXIAO_DEFAULT_ENDPOINT,
   type YunxiaoAccount,
   type YunxiaoAccountSelection
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 
 export type YunxiaoAccountFile = {
   version: 1

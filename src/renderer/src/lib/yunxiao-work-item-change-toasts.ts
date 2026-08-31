@@ -3,7 +3,7 @@ import {
   deliverYunxiaoChangeAnnouncements,
   type YunxiaoChangeAnnouncement
 } from './yunxiao-change-announcement-delivery'
-import type { YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 /**
  * Announcements for remote 云效 changes: when a fresh list read lands, items

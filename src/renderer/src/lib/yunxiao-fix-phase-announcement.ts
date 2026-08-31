@@ -1,7 +1,7 @@
 import {
   summarizeFixPhase,
   type YunxiaoFixPhase
-} from '@/components/task-page-yunxiao-fix-progress'
+} from '../components/task-page-yunxiao-fix-progress'
 import type { AgentDotState } from '@/components/AgentStateDot'
 
 /**

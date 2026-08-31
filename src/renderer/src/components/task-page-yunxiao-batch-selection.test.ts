@@ -5,7 +5,7 @@ import {
   selectableYunxiaoWorkItems,
   toggleYunxiaoRowSelection
 } from './task-page-yunxiao-batch-selection'
-import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 // 处理中 is the least ambiguous fixable status: outstanding by stage alone,
 // without relying on a name-matched special case.

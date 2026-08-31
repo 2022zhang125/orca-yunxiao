@@ -20,7 +20,7 @@ import type {
   YunxiaoWorkItemAttachmentResolver,
   YunxiaoWorkItemDetailLoader
 } from '@/components/task-page-yunxiao-work-item-detail'
-import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 export type TaskPageYunxiaoWorkItemSection = {
   key: string

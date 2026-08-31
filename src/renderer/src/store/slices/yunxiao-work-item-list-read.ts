@@ -3,7 +3,7 @@ import type {
   YunxiaoAccountSelection,
   YunxiaoWorkItem,
   YunxiaoWorkItemFilter
-} from '../../../../shared/types'
+} from '../../../../shared/yunxiao-types'
 import { isIntegrationCredentialDecryptionError } from '../../../../shared/integration-credential-errors'
 import { announceYunxiaoWorkItemListChanges } from '@/lib/yunxiao-work-item-change-toasts'
 import {

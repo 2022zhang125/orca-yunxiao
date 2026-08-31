@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Github, Gitlab } from 'lucide-react'
-import type { GlobalSettings, TaskProvider } from '../../../../shared/types'
+import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import type { TaskProvider } from '../../../../shared/task-providers'
 import {
   TASK_PROVIDERS,
   normalizeVisibleTaskProviders,
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store'
 import { SearchableSetting } from './SearchableSetting'
 import { SettingsSubsectionHeader } from './SettingsFormControls'
-import { CodeHostSetupSteps, JiraSetupSteps, YunxiaoSetupSteps } from './TaskSourceSimpleSetup'
+import { CodeHostSetupSteps, JiraSetupSteps } from './TaskSourceSimpleSetup'
 import { TaskSourceLinearSetup } from './TaskSourceLinearSetup'
 import { TaskSourceProviderCard } from './TaskSourceProviderCard'
 import {
@@ -97,7 +98,7 @@ const PROVIDER_META: Record<
     get description() {
       return translate(
         'auto.components.settings.TasksPane.yunxiao_description',
-        'Show 云效 in the Tasks source picker and sidebar shortcuts.'
+        'Connect a 云效 organization and show it in Tasks.'
       )
     },
     Icon: ({ className }) => <YunxiaoIcon className={className} />
@@ -109,7 +110,6 @@ export function TasksPane({ settings, updateSettings }: TasksPaneProps): React.J
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const checkJiraConnection = useAppStore((s) => s.checkJiraConnection)
-  const checkYunxiaoConnection = useAppStore((s) => s.checkYunxiaoConnection)
   const refreshPreflightStatus = useAppStore((s) => s.refreshPreflightStatus)
   const readinessByProvider = useTaskSourceProviderReadiness(visibleProviders)
   useIntegrationProviderStatusRefresh()
@@ -239,16 +239,6 @@ export function TasksPane({ settings, updateSettings }: TasksPaneProps): React.J
                     onToggleVisible={() => toggleProvider('jira')}
                     onConnected={() => void checkJiraConnection()}
                     onOpenIntegrations={() => openIntegrations(JIRA_INTEGRATION_SECTION_ID)}
-                  />
-                ) : provider === 'yunxiao' ? (
-                  <YunxiaoSetupSteps
-                    connected={readiness.connected}
-                    checking={readiness.checking}
-                    visible={visible}
-                    canHide={canHide}
-                    onToggleVisible={() => toggleProvider('yunxiao')}
-                    onConnected={() => void checkYunxiaoConnection()}
-                    onOpenIntegrations={() => openIntegrations()}
                   />
                 ) : (
                   <CodeHostSetupSteps

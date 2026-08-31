@@ -24,7 +24,11 @@ import {
 } from '@/components/task-page-yunxiao-status-tone'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
-import type { YunxiaoLabel, YunxiaoWorkItem, YunxiaoWorkItemCategory } from '../../../shared/types'
+import type {
+  YunxiaoLabel,
+  YunxiaoWorkItem,
+  YunxiaoWorkItemCategory
+} from '../../../shared/yunxiao-types'
 
 const WORK_ITEM_TYPE_ICON: Record<YunxiaoWorkItemCategory, typeof Bug> = {
   Req: Lightbulb,

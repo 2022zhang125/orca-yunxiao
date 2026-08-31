@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { ArrowDown, ChevronsDownUp, ChevronsUpDown, Square } from 'lucide-react-native'
+import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { colors } from '../theme/mobile-theme'
 import { styles } from './mobile-native-chat-view-styles'
@@ -26,7 +27,6 @@ import { MobileNativeChatComposer } from './MobileNativeChatComposer'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
 import { MobileNativeChatMessage } from './MobileNativeChatMessage'
 import { MobileNativeChatAsk } from './MobileNativeChatAsk'
-import type { AskAnswerSelection, AskPrompt } from './mobile-native-chat-ask'
 import { MobileNativeChatPermission } from './MobileNativeChatPermission'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import { MobileNativeChatQuestion } from './MobileNativeChatQuestion'
@@ -58,8 +58,13 @@ type Props = {
   loadingEarlier?: boolean
   onLoadEarlier?: () => void
   onSend: (text: string) => Promise<boolean>
-  /** Optimistic queued sends (owned by the route so they survive view switches). */
-  /** Optimistic user echoes, including any ridden-along image preview URIs. */
+  /** Route identity used to fence accepted sends that settle after a tab/view switch. */
+  sendSurfaceId: string
+  /** Reads the retained route's focus generation for accepted-send fencing. */
+  getSendCompletionGeneration: () => number
+  /** Reads user draft mutations from the route-owned controller. */
+  getComposerEditGeneration: () => number
+  /** Accepted user echoes awaiting transcript replacement, including image previews. */
   pending: MobileNativeChatPendingItem[]
   /** Local photo URIs retained when the authoritative transcript replaces an
    *  optimistic image bubble. */
@@ -127,6 +132,9 @@ export function MobileNativeChatView({
   loadingEarlier,
   onLoadEarlier,
   onSend,
+  sendSurfaceId,
+  getSendCompletionGeneration,
+  getComposerEditGeneration,
   pending,
   imagePreviewsByMessageId,
   composerText,
@@ -176,19 +184,19 @@ export function MobileNativeChatView({
     []
   )
 
-  const pendingIds = useMemo(() => new Set(pending.map((p) => p.id)), [pending])
   // `data` is the list source: folded transcript + synthetic streaming bubble +
-  // route-owned optimistic queued messages. Memoize on the same deps so the
+  // route-owned accepted echoes. Memoize on the same deps so the
   // downstream autoscroll effects/`renderItem` keep referential stability.
   const { data } = useMemo(
     () =>
       buildMobileNativeChatTransientData({
+        messages,
         folded,
         streaming,
         pending,
         imagePreviewsByMessageId
       }),
-    [folded, streaming, pending, imagePreviewsByMessageId]
+    [messages, folded, streaming, pending, imagePreviewsByMessageId]
   )
 
   // Follow the tail as the conversation grows and keep the newest message above
@@ -248,7 +256,6 @@ export function MobileNativeChatView({
     ({ item, index }: { item: NativeChatMessage; index: number }) => (
       <MobileNativeChatMessage
         message={item}
-        queued={pendingIds.has(item.id)}
         toolsExpanded={toolsExpanded}
         fontScale={fontScale}
         messageIndex={index}
@@ -256,7 +263,7 @@ export function MobileNativeChatView({
         onOpenFile={onOpenFile}
       />
     ),
-    [pendingIds, toolsExpanded, fontScale, onScrollToMessage, onOpenFile]
+    [toolsExpanded, fontScale, onScrollToMessage, onOpenFile]
   )
 
   const emptyState = mobileNativeChatEmptyState(status, agent ?? null, error)
@@ -433,6 +440,8 @@ export function MobileNativeChatView({
         value={composerText}
         onChangeText={onComposerTextChange}
         onSend={handleSend}
+        sendSurfaceId={sendSurfaceId}
+        {...{ getSendCompletionGeneration, getComposerEditGeneration }}
         agent={agent}
         sessionOptions={sessionOptions}
         onAttachImage={onAttachImage}

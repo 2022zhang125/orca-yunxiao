@@ -2,14 +2,15 @@
 // On macOS a keychain reset/denial makes decryptString throw at load, and the
 // raw ciphertext then masqueraded as a configured proxy: applyElectronProxySettings
 // silently fell back to DIRECT and the garbage re-persisted forever. These tests
-// pin the recovery contract: undecryptable values are cleared (never applied,
-// never re-saved as garbage), plaintext values survive as the upgrade path, and
-// a throwing safeStorage.isEncryptionAvailable() cannot kill the whole save.
+// pin the recovery contract: undecryptable values stay sealed (never applied
+// or destroyed), plaintext values survive as the upgrade path, and safeStorage
+// failures cannot expose the proxy secret or kill unrelated saves.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { installFakeAppEnvironment } from '../../config/scripts/vitest-host-ports-setup'
 
 const testState = { dir: '' }
 
@@ -28,26 +29,7 @@ vi.mock('electron', () => ({
   app: {
     getPath: () => testState.dir
   },
-  session: { defaultSession: undefined },
-  safeStorage: {
-    isEncryptionAvailable: () => {
-      if (cipherState.availabilityThrows) {
-        throw new Error('safeStorage cannot be used before the app is ready')
-      }
-      return cipherState.encryptionAvailable
-    },
-    encryptString: (plaintext: string) => Buffer.from(`enc:${randomUUID()}:${plaintext}`, 'utf-8'),
-    decryptString: (ciphertext: Buffer) => {
-      if (cipherState.decryptAlwaysThrows) {
-        throw new Error('keychain access denied')
-      }
-      const decoded = ciphertext.toString('utf-8')
-      if (!decoded.startsWith('enc:')) {
-        throw new Error('invalid ciphertext')
-      }
-      return decoded.slice('enc:'.length + 36 + 1)
-    }
-  }
+  session: { defaultSession: undefined }
 }))
 
 vi.mock('./telemetry/client', () => ({
@@ -60,7 +42,31 @@ vi.mock('./telemetry/cohort-classifier', () => ({
 
 async function createStore() {
   vi.resetModules()
+  const { setSecretStore } = await import('../shared/secret-store')
+  setSecretStore({
+    isEncryptionAvailable: () => {
+      if (cipherState.availabilityThrows) {
+        throw new Error('safeStorage cannot be used before the app is ready')
+      }
+      return cipherState.encryptionAvailable
+    },
+    encryptString: (plaintext) => Buffer.from(`enc:${randomUUID()}:${plaintext}`, 'utf-8'),
+    decryptString: (ciphertext) => {
+      if (cipherState.decryptAlwaysThrows) {
+        throw new Error('keychain access denied')
+      }
+      const decoded = ciphertext.toString('utf-8')
+      if (!decoded.startsWith('enc:')) {
+        throw new Error('invalid ciphertext')
+      }
+      return decoded.slice('enc:'.length + 36 + 1)
+    },
+    describeProtectionGap: () => null
+  })
   const { Store, initDataPath } = await import('./persistence')
+  // Why here: userData resolves through AppEnvironment, and this must point at this
+  // file's temp dir rather than the global fake's shared one, after resetModules.
+  installFakeAppEnvironment({ getPath: () => testState.dir })
   initDataPath()
   return new Store()
 }
@@ -131,8 +137,9 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     })
   })
 
-  it('clears an undecryptable httpProxyUrl instead of surfacing ciphertext as settings', async () => {
+  it('seals an undecryptable httpProxyUrl without destroying its ciphertext', async () => {
     await seedConfiguredProxy()
+    const originalCiphertext = JSON.parse(readFileSync(dataFile(), 'utf-8')).settings.httpProxyUrl
 
     // Keychain reset/denial: every decrypt now fails.
     cipherState.decryptAlwaysThrows = true
@@ -142,13 +149,14 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     // Bypass rules are not encrypted and must survive.
     expect(reloaded.getSettings().httpProxyBypassRules).toBe(BYPASS_RULES)
 
-    // The cleanup must reach disk so garbage never round-trips back in.
+    // Unrelated durable changes must not erase ciphertext that can recover later.
+    reloaded.updateSettings({ httpProxyBypassRules: 'localhost' })
     vi.advanceTimersByTime(2000)
     await reloaded.waitForPendingWrite()
     const persisted = JSON.parse(readFileSync(dataFile(), 'utf-8')) as {
       settings: { httpProxyUrl: string }
     }
-    expect(persisted.settings.httpProxyUrl).toBe('')
+    expect(persisted.settings.httpProxyUrl).toBe(originalCiphertext)
   })
 
   it('keeps a plaintext httpProxyUrl on disk readable (pre-encryption/hand-edited upgrade path)', async () => {
@@ -164,7 +172,7 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     expect(store.getSettings().httpProxyBypassRules).toBe(BYPASS_RULES)
   })
 
-  it('still saves and reloads the proxy when safeStorage.isEncryptionAvailable throws', async () => {
+  it('saves non-secret proxy settings without plaintext when availability throws', async () => {
     cipherState.availabilityThrows = true
 
     const store = await createStore()
@@ -172,15 +180,15 @@ describe('httpProxyUrl secret recovery (STA-3442)', () => {
     vi.advanceTimersByTime(1000)
     await store.waitForPendingWrite()
 
-    // Encryption degraded to plaintext passthrough; the save must not be lost.
     expect(existsSync(dataFile())).toBe(true)
     const persisted = JSON.parse(readFileSync(dataFile(), 'utf-8')) as {
       settings: { httpProxyUrl: string; httpProxyBypassRules: string }
     }
-    expect(persisted.settings.httpProxyUrl).toBe(PROXY_URL)
+    expect(persisted.settings.httpProxyUrl).toBe('')
     expect(persisted.settings.httpProxyBypassRules).toBe(BYPASS_RULES)
 
     const reloaded = await createStore()
-    expect(reloaded.getSettings().httpProxyUrl).toBe(PROXY_URL)
+    expect(reloaded.getSettings().httpProxyUrl).toBe('')
+    expect(reloaded.getSettings().httpProxyBypassRules).toBe(BYPASS_RULES)
   })
 })

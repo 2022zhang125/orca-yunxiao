@@ -1,5 +1,5 @@
 import { canFixYunxiaoWorkItem } from '@/components/task-page-yunxiao-status-tone'
-import type { YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 /**
  * Which rows a batch fix may actually arm. Mirrors the row's own checkbox gate:

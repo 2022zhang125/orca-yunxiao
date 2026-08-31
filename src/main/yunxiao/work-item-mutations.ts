@@ -3,7 +3,7 @@ import type {
   YunxiaoCreateWorkItemResult,
   YunxiaoMutationResult,
   YunxiaoWorkItemUpdate
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 import { acquire, getClients, release, yunxiaoRequest } from './client'
 import { workItemsPath } from './work-items'
 import { asRecord, buildWorkItemUrl, firstString } from './work-item-normalizers'

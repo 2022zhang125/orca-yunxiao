@@ -164,6 +164,52 @@ describe('orchestration worker-start CLI contract', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('prints the Structured Chat recovery action for a refused worker start', async () => {
+    callMock.mockResolvedValue({
+      result: {
+        taskId: 'task_1',
+        dispatchId: 'ctx_1',
+        state: 'failed',
+        failedStage: 'dispatch_input',
+        lastError:
+          'The target terminal is in Structured Chat. Switch it to Terminal, then retry `orca orchestration worker-start`.',
+        effects: [],
+        residualResources: []
+      }
+    })
+
+    await ORCHESTRATION_HANDLERS['orchestration worker-start']({
+      flags: new Map<string, string | boolean>([
+        ['task', 'task_1'],
+        ['terminal', 'term_worker'],
+        ['from', 'term_coord']
+      ]),
+      client: { call: callMock },
+      cwd: '/tmp/repo',
+      json: false
+    } as never)
+
+    const formatter = vi.mocked(printResult).mock.calls[0]?.[2] as
+      | ((result: {
+          taskId: string
+          dispatchId: string
+          state: string
+          failedStage?: string
+          lastError?: string
+        }) => string)
+      | undefined
+    expect(
+      formatter?.({
+        taskId: 'task_1',
+        dispatchId: 'ctx_1',
+        state: 'failed',
+        failedStage: 'dispatch_input',
+        lastError:
+          'The target terminal is in Structured Chat. Switch it to Terminal, then retry `orca orchestration worker-start`.'
+      })
+    ).toMatch(/Structured Chat.*Switch it to Terminal.*orca orchestration worker-start/s)
+  })
+
   it('prints a reveal warning for a live background worker', async () => {
     callMock.mockResolvedValue({
       result: {
@@ -203,6 +249,43 @@ describe('orchestration worker-start CLI contract', () => {
         warning: 'Terminal term_worker is running but could not be revealed.'
       })
     ).toContain('Warning: Terminal term_worker is running but could not be revealed.')
+  })
+
+  it('prints the retained-process warning for a manual worker-stop', async () => {
+    callMock.mockResolvedValue({
+      result: {
+        dispatchId: 'ctx_manual',
+        state: 'stopped',
+        processAction: 'none',
+        warning: 'The assignment was stopped without closing its unsupervised terminal process.'
+      }
+    })
+
+    await ORCHESTRATION_HANDLERS['orchestration worker-stop']({
+      flags: new Map<string, string | boolean>([['dispatch', 'ctx_manual']]),
+      client: { call: callMock },
+      cwd: '/tmp/repo',
+      json: false
+    } as never)
+
+    const formatter = vi.mocked(printResult).mock.calls[0]?.[2] as
+      | ((result: {
+          dispatchId: string
+          state: string
+          processAction: string
+          warning?: string
+        }) => string)
+      | undefined
+    expect(
+      formatter?.({
+        dispatchId: 'ctx_manual',
+        state: 'stopped',
+        processAction: 'none',
+        warning: 'The assignment was stopped without closing its unsupervised terminal process.'
+      })
+    ).toContain(
+      'Warning: The assignment was stopped without closing its unsupervised terminal process.'
+    )
   })
 
   it('allows the initial zero cursor when paging worker output', async () => {

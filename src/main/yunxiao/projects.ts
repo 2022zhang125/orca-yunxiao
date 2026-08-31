@@ -3,7 +3,7 @@ import type {
   YunxiaoProject,
   YunxiaoWorkItemCategory,
   YunxiaoWorkItemType
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 import { acquire, getClients, release, yunxiaoRequest } from './client'
 import type { YunxiaoClientForAccount } from './request'
 import {

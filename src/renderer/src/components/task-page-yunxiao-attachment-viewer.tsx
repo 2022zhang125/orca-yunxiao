@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import type { YunxiaoDefectAttachment } from '@/components/task-page-yunxiao-defect-report'
-import type { YunxiaoWorkItemFile } from '../../../shared/types'
+import type { YunxiaoWorkItemFile } from '../../../shared/yunxiao-types'
 
 /** Trades a 云效 file id for a pre-signed link. Null when it cannot be resolved. */
 export type YunxiaoAttachmentResolver = (

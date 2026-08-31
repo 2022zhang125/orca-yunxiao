@@ -7,7 +7,7 @@ import {
   type YunxiaoUser,
   type YunxiaoWorkItem,
   type YunxiaoWorkItemCategory
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 import type { YunxiaoClientForAccount } from './request'
 import { unwrapWorkItemDescription } from './work-item-description'
 

@@ -28,11 +28,13 @@ import {
   nativeChatSessionOptionDisabledReason,
   nativeChatSessionOptionLabel
 } from './native-chat-session-option-labels'
+import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 
 export type NativeChatSessionOptionPickersProps = {
   surface: SessionOptionsSurface | null
   snapshot: SessionOptionDescriptor[]
   isWorking: boolean
+  pickerRequest?: NativeChatOptionPickerRequest | null
 }
 
 function PickerTooltipContent(props: {
@@ -207,7 +209,8 @@ function runSurfaceCall(
 function NativeChatSessionOptionPickersInner({
   surface,
   snapshot,
-  isWorking
+  isWorking,
+  pickerRequest
 }: NativeChatSessionOptionPickersProps): React.JSX.Element | null {
   const [pendingId, setPendingId] = useState<string | null>(null)
   const model = snapshot.find((descriptor) => descriptor.category === 'model')
@@ -215,6 +218,10 @@ function NativeChatSessionOptionPickersInner({
   if (!surface || !model) {
     return null
   }
+  const requestedModelSequence = pickerRequest?.id === model.id ? pickerRequest.sequence : null
+  const requestedOptionsSequence = options.some((descriptor) => descriptor.id === pickerRequest?.id)
+    ? (pickerRequest?.sequence ?? null)
+    : null
 
   const setOption = (descriptor: SessionOptionDescriptor, value: SessionOptionValue): void => {
     runSurfaceCall(descriptor.id, setPendingId, () => surface.setOption(descriptor.id, value))
@@ -234,7 +241,10 @@ function NativeChatSessionOptionPickersInner({
   return (
     <div className="flex min-w-0 items-center gap-0.5">
       {options.length > 0 ? (
-        <DropdownMenu>
+        <DropdownMenu
+          key={`options:${requestedOptionsSequence ?? 'idle'}`}
+          defaultOpen={requestedOptionsSequence !== null}
+        >
           <PickerTrigger
             label={nativeChatOptionsPillLabel(options)}
             tooltipLabel={optionsTooltip}
@@ -242,7 +252,7 @@ function NativeChatSessionOptionPickersInner({
             disabledReason={optionsReason}
             dispatched={options.some((descriptor) => descriptor.valueSource === 'dispatched')}
           />
-          <DropdownMenuContent align="start" className="w-60">
+          <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-60">
             {options.map((descriptor, index) => {
               const reason = nativeChatSessionOptionDisabledReason(descriptor.disabledReason)
               return (
@@ -264,7 +274,10 @@ function NativeChatSessionOptionPickersInner({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
-      <DropdownMenu>
+      <DropdownMenu
+        key={`model:${requestedModelSequence ?? 'idle'}`}
+        defaultOpen={requestedModelSequence !== null}
+      >
         <PickerTrigger
           label={nativeChatModelPillLabel(model)}
           tooltipLabel={modelTooltip}
@@ -272,7 +285,7 @@ function NativeChatSessionOptionPickersInner({
           disabledReason={modelReason}
           dispatched={model.valueSource === 'dispatched'}
         />
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent align="start" side="top" collisionPadding={8} className="w-64">
           {modelReason && !model.settable ? (
             <DropdownMenuLabel className="font-normal">{modelReason}</DropdownMenuLabel>
           ) : null}

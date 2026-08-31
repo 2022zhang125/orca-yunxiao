@@ -59,7 +59,10 @@ vi.mock('@/lib/browser-uuid', () => ({
 }))
 
 vi.mock('@/lib/worktree-activation', () => ({
-  activateAndRevealWorktree: vi.fn(() => false),
+  activateAndRevealWorktree: vi.fn(() => false)
+}))
+
+vi.mock('@/lib/worktree-initial-terminal-seeding', () => ({
   ensureWorktreeHasInitialTerminal: vi.fn()
 }))
 
@@ -82,11 +85,9 @@ vi.mock('@/lib/ephemeral-vm-workspace-target', () => ({
 }))
 
 import { toast } from 'sonner'
-import {
-  activateAndRevealWorktree,
-  ensureWorktreeHasInitialTerminal
-} from '@/lib/worktree-activation'
-import { resetBackgroundWorktreeCreationQueueForTests } from '@/lib/background-worktree-creation-queue'
+import { resetBackgroundWorktreeCreationQueueForTests } from './background-worktree-creation-queue'
+import { activateAndRevealWorktree } from '@/lib/worktree-activation'
+import { ensureWorktreeHasInitialTerminal } from '@/lib/worktree-initial-terminal-seeding'
 import { queueWorkspaceActivationTerminalFocus } from '@/lib/workspace-activation-terminal-focus'
 import {
   beginBackgroundWorktreePreparation,
@@ -100,6 +101,9 @@ beforeEach(() => {
   // Why: the default createWorktree mock never settles, so a create from a prior
   // test would hold a background-queue slot and leave the next one queued.
   resetBackgroundWorktreeCreationQueueForTests()
+  globalThis.window = {
+    api: { agentTrust: { markTrusted: vi.fn() } }
+  } as never
   store.settings.activeRuntimeEnvironmentId = null
   store.settings.experimentalNativeChat = undefined
   store.settings.openAgentTabsInChatByDefault = undefined
@@ -140,11 +144,10 @@ function makePendingCreation(request: WorktreeCreationRequest): PendingWorktreeC
   }
 }
 
-// A macrotask hop rather than a fixed number of microtask flushes: the create
-// path's await chain grows (the 云效 stamp is one such link), and counting ticks
-// makes every addition silently strand these assertions.
 async function flushAsyncWorktreeCreation(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  for (let step = 0; step < 6; step += 1) {
+    await Promise.resolve()
+  }
 }
 
 describe('runBackgroundWorktreeCreation', () => {
@@ -164,6 +167,7 @@ describe('runBackgroundWorktreeCreation', () => {
     prepareEphemeralVmWorkspaceTargetMock.mockReset()
     globalThis.window = {
       api: {
+        agentTrust: { markTrusted: vi.fn() },
         ephemeralVm: {
           attachWorkspace: vi.fn(),
           cleanup: vi.fn(),
@@ -518,13 +522,14 @@ describe('staged background worktree creation', () => {
     expect(store.setSidebarOpen).not.toHaveBeenCalled()
   })
 
-  it('does not reveal a completed staged create after the user leaves the creation surface', async () => {
+  it('keeps a backend startup terminal in the background after the user leaves', async () => {
     store.activeView = 'tasks'
     store.createWorktree.mockResolvedValueOnce({
       worktree: {
         id: 'wt-1',
         repoId: 'repo-1'
-      }
+      },
+      startupTerminal: { tabId: 'agent-tab', spawned: true }
     })
 
     const started = continueBackgroundWorktreeCreation('creation-1', makeRequest(), {
@@ -541,7 +546,7 @@ describe('staged background worktree creation', () => {
       undefined,
       undefined,
       undefined,
-      { activateCreatedTabs: false }
+      { activateCreatedTabs: false, backendStartupTerminalSpawned: true }
     )
     expect(queueWorkspaceActivationTerminalFocus).not.toHaveBeenCalled()
     expect(store.removePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
@@ -549,8 +554,11 @@ describe('staged background worktree creation', () => {
     })
   })
 
-  it('reveals the completed workspace after the user switches to another workspace', async () => {
-    let resolveCreate!: (result: { worktree: { id: string; repoId: string } }) => void
+  it('reveals a backend-owned startup after the user switches workspaces', async () => {
+    let resolveCreate!: (result: {
+      worktree: { id: string; repoId: string }
+      startupTerminal: { tabId: string; spawned: true }
+    }) => void
     store.createWorktree.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveCreate = resolve
@@ -566,11 +574,15 @@ describe('staged background worktree creation', () => {
     // Why: selecting a real workspace clears only the pending surface pointer;
     // completion should still finish the task-launch handoff once it is ready.
     store.activePendingCreationId = null
-    resolveCreate({ worktree: { id: 'wt-1', repoId: 'repo-1' } })
+    resolveCreate({
+      worktree: { id: 'wt-1', repoId: 'repo-1' },
+      startupTerminal: { tabId: 'agent-tab', spawned: true }
+    })
     await flushAsyncWorktreeCreation()
 
     expect(activateAndRevealWorktree).toHaveBeenCalledWith('wt-1', {
-      sidebarRevealBehavior: 'auto'
+      sidebarRevealBehavior: 'auto',
+      backendStartupTerminalSpawned: true
     })
     expect(ensureWorktreeHasInitialTerminal).not.toHaveBeenCalled()
     expect(store.removePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
@@ -737,6 +749,10 @@ describe('staged background worktree creation', () => {
     expect(store.seedNativeChatLaunchDraft).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 'agent-tab' })
     )
+    const createCall = store.createWorktree.mock.calls[0] as unknown[] | undefined
+    expect(createCall?.[25]).toEqual({
+      startupDraft: 'https://github.com/o/r/issues/12'
+    })
   })
 
   it.each([

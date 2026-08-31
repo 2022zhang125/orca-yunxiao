@@ -19,7 +19,7 @@ import type {
   YunxiaoConnectionStatus,
   YunxiaoOrganization,
   YunxiaoViewer
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 
 export { acquire, release, yunxiaoRequest, isAuthError, YunxiaoApiError } from './request'
 export type { YunxiaoClientForAccount } from './request'

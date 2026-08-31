@@ -3,7 +3,7 @@ import type {
   YunxiaoAccountSelection,
   YunxiaoConnectionStatus,
   YunxiaoViewer
-} from '../../../../shared/types'
+} from '../../../../shared/yunxiao-types'
 import {
   yunxiaoConnect,
   yunxiaoDisconnect,

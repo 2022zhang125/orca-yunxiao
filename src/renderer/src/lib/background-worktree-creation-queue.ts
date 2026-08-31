@@ -1,6 +1,8 @@
 import { useAppStore } from '@/store'
-import { getInitialWorktreeCreationPhase } from '@/lib/worktree-creation-flow-startup'
-import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
+import {
+  getInitialWorktreeCreationPhase,
+  type WorktreeCreationRequest
+} from './pending-worktree-creation'
 
 // Why: a batch launch (the 云效 task list ticks N defects, each getting its own
 // fix workspace) used to call the create path once per item in one synchronous

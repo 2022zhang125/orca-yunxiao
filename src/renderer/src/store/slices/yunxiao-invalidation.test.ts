@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
 import type { AppState } from '../types'
-import type { YunxiaoWorkItem } from '../../../../shared/types'
+import type { YunxiaoWorkItem } from '../../../../shared/yunxiao-types'
 import { createYunxiaoSlice } from './yunxiao'
 
 const yunxiaoListWorkItems = vi.fn()

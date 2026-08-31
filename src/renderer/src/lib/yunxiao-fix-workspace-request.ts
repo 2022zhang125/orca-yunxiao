@@ -2,7 +2,7 @@ import { buildAgentStartupPlan } from '@/lib/tui-agent-startup'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { getLocalRepoProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { resolveSourceControlLaunchPlatform } from '@/lib/source-control-launch-platform'
-import { buildGitHubWorkItemBackendStartup } from '@/lib/github-work-item-background-request'
+import { buildDirectWorkItemStartupOpts } from '@/lib/launch-work-item-direct-agent'
 import { tuiAgentToAgentKind } from '@/lib/telemetry'
 import { repoIsRemote } from '../../../shared/agent-launch-remote'
 import {
@@ -14,7 +14,9 @@ import { projectHostSetupProjectionFromRepos } from '../../../shared/project-hos
 import { resolveLocalWindowsAgentStartupShell } from '../../../shared/windows-terminal-shell'
 import type { useAppStore } from '@/store'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
-import type { Repo, TuiAgent, YunxiaoWorkItem } from '../../../shared/types'
+import type { Repo } from '../../../shared/repo-types'
+import type { TuiAgent } from '../../../shared/tui-agent'
+import type { YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 import type { TaskSourceContext, WorkspaceRunContext } from '../../../shared/task-source-context'
 
 /** 云效 defect fixes always run the repo's bug workflow under Claude. */
@@ -129,7 +131,11 @@ export function buildYunxiaoFixWorkspaceRequest(args: {
     launch_source: 'new_workspace_composer' as const,
     request_kind: 'new' as const
   }
-  const startup = buildGitHubWorkItemBackendStartup(YUNXIAO_FIX_AGENT, startupPlan, quickTelemetry)
+  const startup = buildDirectWorkItemStartupOpts(
+    YUNXIAO_FIX_AGENT,
+    startupPlan,
+    'new_workspace_composer'
+  ).startup
 
   return {
     repoId: repo.id,

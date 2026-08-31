@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS, type SubprocessHandle } from './session'
+import { IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS } from './session-termination-controller'
+import type { SubprocessHandle } from './session-subprocess-handle'
 import { TerminalHost } from './terminal-host'
-import type { TuiAgent } from '../../shared/types'
+import type { TuiAgent } from '../../shared/tui-agent'
 
 // An immediate kill must not acknowledge teardown until the child is physically
 // gone — destructive worktree removal fails closed on anything less. The two
@@ -42,6 +43,7 @@ function createMockSubprocess(): MockSubprocess {
     resize: vi.fn(),
     kill: vi.fn(),
     forceKill: vi.fn(() => onExitCb?.(137)),
+    terminateOwnedTree: vi.fn(() => 'unavailable' as const),
     signal: vi.fn(),
     onData() {},
     onExit(cb) {

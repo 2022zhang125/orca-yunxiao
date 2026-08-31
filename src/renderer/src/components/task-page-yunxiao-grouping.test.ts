@@ -8,7 +8,7 @@ import {
   getYunxiaoStatusDotTone,
   getYunxiaoStatusTone
 } from './task-page-yunxiao-status-tone'
-import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/types'
+import type { YunxiaoStatusStage, YunxiaoWorkItem } from '../../../shared/yunxiao-types'
 
 function workItem(id: string, statusName: string, stage: YunxiaoStatusStage): YunxiaoWorkItem {
   return {

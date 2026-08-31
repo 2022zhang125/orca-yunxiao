@@ -11,8 +11,11 @@ export function useIntegrationProviderStatusRefresh(): void {
   const linearStatusContextKey = useAppStore((s) => s.linearStatusContextKey)
   const jiraStatusChecked = useAppStore((s) => s.jiraStatusChecked)
   const jiraStatusContextKey = useAppStore((s) => s.jiraStatusContextKey)
+  const yunxiaoStatusChecked = useAppStore((s) => s.yunxiaoStatusChecked)
+  const yunxiaoStatusContextKey = useAppStore((s) => s.yunxiaoStatusContextKey)
   const checkLinearConnection = useAppStore((s) => s.checkLinearConnection)
   const checkJiraConnection = useAppStore((s) => s.checkJiraConnection)
+  const checkYunxiaoConnection = useAppStore((s) => s.checkYunxiaoConnection)
   const refreshPreflightStatus = useAppStore((s) => s.refreshPreflightStatus)
   const expectedPreflightContextKey = useAppStore((s) =>
     localPreflightContextKey(getLocalPreflightContext(s))
@@ -21,6 +24,7 @@ export function useIntegrationProviderStatusRefresh(): void {
   const preflightStatusCurrent = preflightStatusContextKey === expectedPreflightContextKey
   const linearStatusCurrent = linearStatusContextKey === providerRuntimeContextKey
   const jiraStatusCurrent = jiraStatusContextKey === providerRuntimeContextKey
+  const yunxiaoStatusCurrent = yunxiaoStatusContextKey === providerRuntimeContextKey
 
   useEffect(() => {
     if (!linearStatusCurrent || !linearStatusChecked) {
@@ -29,12 +33,16 @@ export function useIntegrationProviderStatusRefresh(): void {
     if (!jiraStatusCurrent || !jiraStatusChecked) {
       void checkJiraConnection()
     }
+    if (!yunxiaoStatusCurrent || !yunxiaoStatusChecked) {
+      void checkYunxiaoConnection()
+    }
     if (!preflightStatusCurrent || !preflightStatusChecked) {
       void refreshPreflightStatus()
     }
   }, [
     checkJiraConnection,
     checkLinearConnection,
+    checkYunxiaoConnection,
     jiraStatusChecked,
     jiraStatusCurrent,
     jiraStatusContextKey,
@@ -46,6 +54,9 @@ export function useIntegrationProviderStatusRefresh(): void {
     preflightStatusContextKey,
     preflightStatusCurrent,
     providerRuntimeContextKey,
-    refreshPreflightStatus
+    refreshPreflightStatus,
+    yunxiaoStatusChecked,
+    yunxiaoStatusContextKey,
+    yunxiaoStatusCurrent
   ])
 }

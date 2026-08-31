@@ -17,7 +17,7 @@ import type {
   YunxiaoWorkItemCategory,
   YunxiaoWorkItemFilter,
   YunxiaoWorkItemUpdate
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 
 const VALID_FILTERS = new Set<YunxiaoWorkItemFilter>(['assigned', 'created', 'all', 'done'])
 const VALID_CATEGORIES = new Set<YunxiaoWorkItemCategory>(['Req', 'Task', 'Bug'])

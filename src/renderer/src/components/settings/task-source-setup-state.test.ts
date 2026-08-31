@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { TaskProvider } from '../../../../shared/types'
+import type { TaskProvider } from '../../../../shared/task-providers'
 import {
   getAutoExpandedTaskProvider,
   getIncompleteVisibleTaskProviders,
@@ -11,7 +11,7 @@ import {
   type TaskProviderReadiness
 } from './task-source-setup-state'
 
-const ORDER: readonly TaskProvider[] = ['github', 'gitlab', 'linear', 'jira']
+const ORDER: readonly TaskProvider[] = ['github', 'gitlab', 'linear', 'jira', 'yunxiao']
 
 function buildReadiness(
   overrides: Partial<Record<TaskProvider, Partial<TaskProviderReadiness>>> = {}

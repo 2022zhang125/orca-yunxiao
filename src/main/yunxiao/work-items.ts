@@ -5,7 +5,7 @@ import type {
   YunxiaoWorkItemCategory,
   YunxiaoWorkItemFile,
   YunxiaoWorkItemFilter
-} from '../../shared/types'
+} from '../../shared/yunxiao-types'
 import { isYunxiaoOutstandingStatus } from '../../shared/yunxiao-defect-status'
 import { acquire, getClients, release, yunxiaoRequest } from './client'
 import type { YunxiaoClientForAccount } from './request'
