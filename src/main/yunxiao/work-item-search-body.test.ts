@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildSearchBody, matchesWorkItemFilter, workItemRelevanceRank } from './work-items'
+import {
+  buildSearchBody,
+  matchesWorkItemFilter,
+  selectWorkItemProjectIds,
+  workItemRelevanceRank
+} from './work-items'
 import { readCustomFieldValue } from './work-item-normalizers'
 import type {
   YunxiaoStatusStage,
@@ -69,6 +74,20 @@ describe('yunxiao work item search body', () => {
   it('sorts by a field the API actually accepts', () => {
     // gmtModified is not in 云效's orderBy set, so it was silently discarded.
     expect(buildSearchBody({ ...base, filter: 'assigned' }).orderBy).toBe('gmtCreate')
+  })
+})
+
+describe('yunxiao project-scoped list', () => {
+  it('reads only the requested project without applying the cross-project cap', () => {
+    const projects = Array.from({ length: 12 }, (_, index) => ({
+      id: `project-${index + 1}`,
+      name: `Project ${index + 1}`
+    }))
+
+    expect(selectWorkItemProjectIds(projects, 'project-12')).toEqual(['project-12'])
+    expect(selectWorkItemProjectIds(projects)).toEqual(
+      projects.slice(0, 10).map((project) => project.id)
+    )
   })
 })
 

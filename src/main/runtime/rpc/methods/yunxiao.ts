@@ -36,7 +36,8 @@ const ListWorkItems = z
   .object({
     filter: z.enum(VALID_FILTERS).optional(),
     limit: OptionalFiniteNumber,
-    accountId: OptionalString
+    accountId: OptionalString,
+    projectId: OptionalString
   })
   .optional()
 
@@ -125,7 +126,12 @@ export const YUNXIAO_METHODS: RpcMethod[] = [
     name: 'yunxiao.listWorkItems',
     params: ListWorkItems,
     handler: async (params, { runtime }) =>
-      runtime.yunxiaoListWorkItems(params?.filter, params?.limit, params?.accountId)
+      runtime.yunxiaoListWorkItems(
+        params?.filter,
+        params?.limit,
+        params?.accountId,
+        params?.projectId
+      )
   }),
   defineMethod({
     name: 'yunxiao.getWorkItem',

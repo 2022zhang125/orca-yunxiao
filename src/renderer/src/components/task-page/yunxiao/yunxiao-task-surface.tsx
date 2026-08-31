@@ -2,43 +2,57 @@ import { Loader2, RefreshCw, Search, X } from 'lucide-react'
 
 import { YunxiaoIcon } from '@/components/icons/YunxiaoIcon'
 import { TaskPageYunxiaoWorkItemList } from '@/components/task-page-yunxiao-work-item-list'
-import { getYunxiaoPresets } from '@/components/task-page-localized-options'
 import { formatRelativeTime } from '@/components/task-page/relative-time'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { YunxiaoConnectDialog } from '@/components/yunxiao-connect-dialog'
 import { translate } from '@/i18n/i18n'
-import { shouldSuppressEnterSubmit } from '@/lib/new-workspace-enter-guard'
 import { cn } from '@/lib/utils'
 import { useTaskPageYunxiao } from './use-task-page-yunxiao'
+import { getYunxiaoProjectKey } from './yunxiao-project-work-items'
 
 function YunxiaoFilters({ model }: { model: ReturnType<typeof useTaskPageYunxiao> }) {
-  const presets = getYunxiaoPresets()
   return (
     <div className="mt-3 rounded-md rounded-b-none border border-border/50 bg-muted/50 px-3 pt-2 pb-3 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {presets.map((preset) => {
-            const active = !model.searchInput && model.activePreset === preset.id
-            return (
-              <Button
-                key={preset.id}
-                type="button"
-                size="xs"
-                variant={active ? 'secondary' : 'ghost'}
-                onClick={() => {
-                  model.setSearchInput('')
-                  model.setAppliedSearch('')
-                  model.setActivePreset(preset.id)
-                  model.refresh()
-                }}
-              >
-                {preset.label}
-              </Button>
-            )
-          })}
-        </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <Tabs
+          value={model.activeProjectKey ?? ''}
+          onValueChange={(value) => model.setActiveProjectKey(value)}
+          className="min-w-0 flex-1 gap-0"
+        >
+          <div className="scrollbar-sleek overflow-x-auto pb-1">
+            <TabsList
+              variant="line"
+              className="h-8 min-w-max justify-start p-0"
+              aria-label={translate(
+                'auto.components.TaskPage.yunxiao_project_tabs',
+                '云效 projects'
+              )}
+            >
+              {model.projects.map((project) => (
+                <TabsTrigger
+                  key={getYunxiaoProjectKey(project)}
+                  value={getYunxiaoProjectKey(project)}
+                  className="h-8 max-w-56 px-3 text-xs"
+                  title={
+                    project.organizationName
+                      ? `${project.organizationName} / ${project.name}`
+                      : project.name
+                  }
+                >
+                  <span className="truncate">{project.name}</span>
+                  {model.selectedAccountId === 'all' && project.organizationName ? (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {project.organizationName}
+                    </span>
+                  ) : null}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+        </Tabs>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -64,25 +78,10 @@ function YunxiaoFilters({ model }: { model: ReturnType<typeof useTaskPageYunxiao
         <Input
           value={model.searchInput}
           onChange={(event) => model.setSearchInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (
-              event.key !== 'Enter' ||
-              shouldSuppressEnterSubmit(
-                { isComposing: event.nativeEvent.isComposing, shiftKey: event.shiftKey },
-                false
-              )
-            ) {
-              return
-            }
-            event.preventDefault()
-            const query = model.searchInput.trim()
-            model.setSearchInput(query)
-            model.setAppliedSearch(query)
-            model.refresh()
-          }}
+          disabled={!model.activeProject}
           placeholder={translate(
             'auto.components.TaskPage.yunxiao_search_placeholder',
-            'Search 云效 work items by title'
+            'Search by title or Bug number'
           )}
           className="h-8 pr-8 pl-8 text-xs"
         />
@@ -92,11 +91,7 @@ function YunxiaoFilters({ model }: { model: ReturnType<typeof useTaskPageYunxiao
             variant="ghost"
             size="icon-xs"
             aria-label={translate('auto.components.TaskPage.b797bdd7c3', 'Clear search')}
-            onClick={() => {
-              model.setSearchInput('')
-              model.setAppliedSearch('')
-              model.refresh()
-            }}
+            onClick={() => model.setSearchInput('')}
             className="absolute top-1/2 right-1 -translate-y-1/2"
           >
             <X />
@@ -113,7 +108,12 @@ function YunxiaoList({ model }: { model: ReturnType<typeof useTaskPageYunxiao> }
     <div className="flex min-h-0 max-h-full flex-col overflow-hidden rounded-md rounded-t-none border border-t-0 border-border/50 bg-background shadow-sm">
       <div className="relative flex h-10 flex-none items-center justify-between gap-3 border-b border-border/50 bg-muted/35 px-3">
         <div className="min-w-0 text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-          {translate('auto.components.TaskPage.yunxiao_list_heading', '云效 work items')}
+          <span className="truncate">
+            {model.activeProject?.name ??
+              translate('auto.components.TaskPage.yunxiao_list_heading', '云效 work items')}
+            {' · '}
+            {translate('auto.components.TaskPage.yunxiao_assigned_to_me', 'Assigned to me')}
+          </span>
         </div>
         <div className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
           {model.workItems.length} {translate('auto.components.TaskPage.b7bae28b6a', 'shown')}
@@ -155,21 +155,31 @@ function YunxiaoList({ model }: { model: ReturnType<typeof useTaskPageYunxiao> }
         {!model.loading && model.workItems.length === 0 && !hasError ? (
           <div className="px-4 py-10 text-center">
             <p className="text-sm font-medium text-foreground">
-              {translate(
-                'auto.components.TaskPage.yunxiao_empty_title',
-                'No 云效 work items found'
-              )}
+              {model.projects.length === 0
+                ? translate(
+                    'auto.components.TaskPage.yunxiao_empty_projects',
+                    'No 云效 projects found'
+                  )
+                : translate(
+                    'auto.components.TaskPage.yunxiao_empty_title',
+                    'No assigned 云效 work items found'
+                  )}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               {model.searchInput
                 ? translate(
                     'auto.components.TaskPage.yunxiao_empty_search',
-                    'Try a different title search.'
+                    'Try a different title or Bug number.'
                   )
-                : translate(
-                    'auto.components.TaskPage.94d900518d',
-                    'No issues match the selected preset.'
-                  )}
+                : model.projects.length === 0
+                  ? translate(
+                      'auto.components.TaskPage.yunxiao_empty_projects_hint',
+                      'Refresh after adding a project in 云效.'
+                    )
+                  : translate(
+                      'auto.components.TaskPage.yunxiao_empty_assigned_hint',
+                      'No work items in this project are assigned to you.'
+                    )}
             </p>
           </div>
         ) : null}

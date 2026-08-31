@@ -137,10 +137,11 @@ export async function yunxiaoListWorkItems(
   settings: RuntimeYunxiaoSettings,
   filter?: YunxiaoWorkItemFilter,
   limit?: number,
-  accountId?: YunxiaoAccountSelection | null
+  accountId?: YunxiaoAccountSelection | null,
+  projectId?: string
 ): Promise<YunxiaoWorkItem[]> {
   const target = getYunxiaoRuntimeTarget(settings)
-  const args = { filter, limit, accountId: accountId ?? undefined }
+  const args = { filter, limit, accountId: accountId ?? undefined, projectId }
   return target.kind === 'environment'
     ? callRuntimeRpc<YunxiaoWorkItem[]>(target, 'yunxiao.listWorkItems', args, {
         timeoutMs: 30_000

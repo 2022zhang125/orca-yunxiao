@@ -1,6 +1,7 @@
 import type {
   YunxiaoAccountSelection,
   YunxiaoComment,
+  YunxiaoProject,
   YunxiaoWorkItem,
   YunxiaoWorkItemCategory,
   YunxiaoWorkItemFile,
@@ -32,6 +33,15 @@ const SEARCH_PAGE_SIZE = 200
 // sending 'END' matches nothing and silently empties the Done preset.
 // 3 = fixed/end, 4 = closed — both are finished work for the Done tab.
 const END_STATUS_STAGE_IDS = '3,4'
+
+export function selectWorkItemProjectIds(
+  projects: YunxiaoProject[],
+  requestedProjectId?: string
+): string[] {
+  return requestedProjectId
+    ? [requestedProjectId]
+    : projects.slice(0, MAX_PROJECTS_PER_LIST).map((project) => project.id)
+}
 
 export function workItemsPath(client: YunxiaoClientForAccount, suffix = ''): string {
   return `/oapi/v1/projex/organizations/${encodeURIComponent(client.account.organizationId)}/workitems${suffix}`
@@ -113,17 +123,17 @@ async function collectWorkItems(
   selection: YunxiaoAccountSelection | undefined,
   limit: number,
   read: (client: YunxiaoClientForAccount, spaceId: string) => Promise<YunxiaoWorkItem[]>,
-  compare: (a: YunxiaoWorkItem, b: YunxiaoWorkItem) => number = byUpdatedAtDesc
+  compare: (a: YunxiaoWorkItem, b: YunxiaoWorkItem) => number = byUpdatedAtDesc,
+  projectId?: string
 ): Promise<YunxiaoWorkItem[]> {
   const collected: YunxiaoWorkItem[] = []
   for (const client of getClients(selection)) {
     await acquire()
     try {
-      const projects = await fetchProjects(client, MAX_PROJECTS_PER_LIST)
+      const projects = projectId ? [] : await fetchProjects(client, MAX_PROJECTS_PER_LIST)
+      const projectIds = selectWorkItemProjectIds(projects, projectId)
       const results = await Promise.all(
-        projects
-          .slice(0, MAX_PROJECTS_PER_LIST)
-          .map((project) => read(client, project.id).catch(() => []))
+        projectIds.map((selectedProjectId) => read(client, selectedProjectId).catch(() => []))
       )
       collected.push(...results.flat())
     } finally {
@@ -177,7 +187,8 @@ export function workItemRelevanceRank(workItem: YunxiaoWorkItem, viewerIds: Set<
 export async function listWorkItems(
   filter: YunxiaoWorkItemFilter = 'assigned',
   limit = 30,
-  accountId?: YunxiaoAccountSelection
+  accountId?: YunxiaoAccountSelection,
+  projectId?: string
 ): Promise<YunxiaoWorkItem[]> {
   // Filled during the reads; the comparator only runs once they have all settled.
   const viewerIds = new Set<string>()
@@ -194,7 +205,8 @@ export async function listWorkItems(
     (a, b) => {
       const rank = workItemRelevanceRank(a, viewerIds) - workItemRelevanceRank(b, viewerIds)
       return rank === 0 ? byUpdatedAtDesc(a, b) : rank
-    }
+    },
+    projectId
   )
 }
 

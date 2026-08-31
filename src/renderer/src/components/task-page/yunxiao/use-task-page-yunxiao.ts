@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 
 import { indexFixWorktreesByWorkItem } from '@/components/task-page-yunxiao-fix-progress'
 import type { YunxiaoDefectAttachment } from '@/components/task-page-yunxiao-defect-report'
-import { TASK_SEARCH_DEBOUNCE_MS } from '@/components/task-page/task-page-list-limits'
 import { getTaskPageRepoSourceContext } from '@/components/task-page/source/repo-source-context'
 import { useDeferredLoadingIndicator } from '@/hooks/use-deferred-loading-indicator'
 import { translate } from '@/i18n/i18n'
@@ -25,9 +24,7 @@ import {
   normalizeTaskSourceContext
 } from '../../../../../shared/task-source-context'
 import type { YunxiaoWorkItem, YunxiaoWorkItemFile } from '../../../../../shared/yunxiao-types'
-import type { YunxiaoPresetId } from '@/components/task-page-localized-options'
-
-const YUNXIAO_ITEM_LIMIT = 50
+import { useYunxiaoProjectWorkItems } from './use-yunxiao-project-work-items'
 
 function getYunxiaoWorkItemWorkspaceSeed(workItem: YunxiaoWorkItem): string {
   const linkedWorkItem: LinkedWorkItemSummary = {
@@ -65,22 +62,9 @@ export function useTaskPageYunxiao() {
   const yunxiaoStatusChecked = useAppStore((state) => state.yunxiaoStatusChecked)
   const yunxiaoStatusContextKey = useAppStore((state) => state.yunxiaoStatusContextKey)
   const checkYunxiaoConnection = useAppStore((state) => state.checkYunxiaoConnection)
-  const searchYunxiaoWorkItems = useAppStore((state) => state.searchYunxiaoWorkItems)
-  const listYunxiaoWorkItems = useAppStore((state) => state.listYunxiaoWorkItems)
   const fetchYunxiaoWorkItem = useAppStore((state) => state.fetchYunxiaoWorkItem)
-  const invalidateYunxiaoWorkItemLists = useAppStore(
-    (state) => state.invalidateYunxiaoWorkItemLists
-  )
   const listRefreshNonce = useAppStore((state) => state.yunxiaoListRefreshNonce)
-  const [workItems, setWorkItems] = useState<YunxiaoWorkItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
-  const [activePreset, setActivePreset] = useState<YunxiaoPresetId>('assigned')
-  const [refreshNonce, setRefreshNonce] = useState(0)
   const [connectOpen, setConnectOpen] = useState(false)
-  const loadingVisible = useDeferredLoadingIndicator(loading)
 
   const providerRuntimeContextKey = getProviderRuntimeContextKey(settings)
   const statusCurrent = yunxiaoStatusContextKey === providerRuntimeContextKey
@@ -107,6 +91,15 @@ export function useTaskPageYunxiao() {
     })
   }, [repos, selectedAccountId, settings, yunxiaoStatus.viewer])
 
+  const projectWorkItems = useYunxiaoProjectWorkItems({
+    connected,
+    status: yunxiaoStatus,
+    selectedAccountId,
+    sourceContext,
+    listRefreshNonce
+  })
+  const loadingVisible = useDeferredLoadingIndicator(projectWorkItems.loading)
+
   const fixWorktreeIdBySerial = useMemo(() => {
     const result = new Map<string, string>()
     for (const [serial, worktree] of indexFixWorktreesByWorkItem(
@@ -122,61 +115,6 @@ export function useTaskPageYunxiao() {
       void checkYunxiaoConnection()
     }
   }, [checkYunxiaoConnection, statusReady])
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setAppliedSearch(searchInput), TASK_SEARCH_DEBOUNCE_MS)
-    return () => window.clearTimeout(timeout)
-  }, [searchInput])
-
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    const query = appliedSearch.trim()
-    const options = { sourceContext }
-    const request = query
-      ? searchYunxiaoWorkItems(query, YUNXIAO_ITEM_LIMIT, options)
-      : listYunxiaoWorkItems(activePreset, YUNXIAO_ITEM_LIMIT, options)
-    void request
-      .then((items) => {
-        if (!cancelled) {
-          setWorkItems(items)
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) {
-          setWorkItems([])
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : translate(
-                  'auto.components.TaskPage.yunxiao_load_failed',
-                  'Failed to load 云效 work items.'
-                )
-          )
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [
-    activePreset,
-    appliedSearch,
-    connected,
-    listYunxiaoWorkItems,
-    listRefreshNonce,
-    refreshNonce,
-    searchYunxiaoWorkItems,
-    sourceContext
-  ])
 
   const openComposer = useCallback(
     (workItem: YunxiaoWorkItem): void => {
@@ -289,27 +227,22 @@ export function useTaskPageYunxiao() {
     [sourceContext]
   )
 
-  const refresh = useCallback(() => {
-    invalidateYunxiaoWorkItemLists({ sourceContext })
-    setRefreshNonce((value) => value + 1)
-  }, [invalidateYunxiaoWorkItemLists, sourceContext])
-
   return {
     statusReady,
     connected,
     status: yunxiaoStatus,
     selectedAccountId,
-    workItems,
-    loading,
+    projects: projectWorkItems.projects,
+    activeProject: projectWorkItems.activeProject,
+    activeProjectKey: projectWorkItems.activeProjectKey,
+    setActiveProjectKey: projectWorkItems.setActiveProjectKey,
+    workItems: projectWorkItems.workItems,
+    loading: projectWorkItems.loading,
     loadingVisible,
-    error,
-    searchInput,
-    setSearchInput,
-    appliedSearch,
-    setAppliedSearch,
-    activePreset,
-    setActivePreset,
-    refresh,
+    error: projectWorkItems.error,
+    searchInput: projectWorkItems.searchInput,
+    setSearchInput: projectWorkItems.setSearchInput,
+    refresh: projectWorkItems.refresh,
     connectOpen,
     setConnectOpen,
     fixWorktreeIdBySerial,

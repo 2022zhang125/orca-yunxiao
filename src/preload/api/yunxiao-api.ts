@@ -35,6 +35,7 @@ export type YunxiaoApi = {
     filter?: YunxiaoWorkItemFilter
     limit?: number
     accountId?: YunxiaoAccountSelection
+    projectId?: string
   }) => Promise<YunxiaoWorkItem[]>
   getWorkItem: (args: { workItemId: string; accountId?: string }) => Promise<YunxiaoWorkItem | null>
   getWorkItemFile: (args: {

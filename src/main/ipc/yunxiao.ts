@@ -138,6 +138,7 @@ export function registerYunxiaoHandlers(): void {
         filter?: YunxiaoWorkItemFilter
         limit?: number
         accountId?: YunxiaoAccountSelection
+        projectId?: string
       }
     ) => {
       const filter = VALID_FILTERS.has(args?.filter as YunxiaoWorkItemFilter)
@@ -146,7 +147,8 @@ export function registerYunxiaoHandlers(): void {
       return listWorkItems(
         filter,
         clampLimit(args?.limit),
-        normalizeAccountSelection(args?.accountId)
+        normalizeAccountSelection(args?.accountId),
+        normalizeAccountId(args?.projectId)
       )
     }
   )
