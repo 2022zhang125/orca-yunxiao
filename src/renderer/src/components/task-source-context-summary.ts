@@ -168,7 +168,7 @@ function getAccountBackedTaskSourceSummary(
   const target = args.accountLabel?.trim() || 'Current account'
   const hostLabel = getHostLabel(args.accountHostId ?? 'local', args.hostLabelById)
   const unavailableHosts = getUnavailableHosts(args.hostAvailability ?? [], args.hostLabelById)
-  const availabilityLabel = getAvailabilityLabel(unavailableHosts)
+  const availabilityLabel = getTaskSourceAvailabilityLabel(unavailableHosts)
   const titleParts = [
     `${providerLabel} source`,
     `Host: ${hostLabel}`,
