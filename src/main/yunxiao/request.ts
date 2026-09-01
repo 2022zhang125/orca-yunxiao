@@ -1,5 +1,5 @@
-import { net, session } from 'electron'
 import { ensureElectronProxyFromEnvironment } from '../network/proxy-settings'
+import { getMainHttpClient } from '../network/http-client'
 import { withSpan } from '../observability/tracer'
 import type { YunxiaoAccount } from '../../shared/yunxiao-types'
 
@@ -60,8 +60,10 @@ async function yunxiaoFetch(url: string, init: RequestInit): Promise<Response> {
     'yunxiao.request',
     async (span) => {
       span.setAttribute('yunxiao.endpoint', new URL(url).origin)
+      const httpClient = getMainHttpClient()
+      const proxySession = httpClient.proxySession()
       await ensureElectronProxyFromEnvironment({
-        proxySession: session.defaultSession,
+        ...(proxySession ? { proxySession } : {}),
         probeUrl: url
       }).catch((error) => {
         span.addEvent('yunxiao.proxySetupFailed', {
@@ -70,9 +72,8 @@ async function yunxiaoFetch(url: string, init: RequestInit): Promise<Response> {
         })
       })
       try {
-        // Why: Electron's network stack follows Chromium proxy/session state,
-        // avoiding undici's stale keep-alive sockets after VPN path changes.
-        return await net.fetch(url, init)
+        // Why the port: Electron follows Chromium proxy/session state; Node hosts use fetch.
+        return await httpClient.fetch(url, init)
       } catch (error) {
         span.setAttribute(
           'yunxiao.transportErrorName',

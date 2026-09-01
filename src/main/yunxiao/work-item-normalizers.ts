@@ -104,6 +104,7 @@ function normalizeStatusStage(value: string | undefined): YunxiaoStatusStage {
     case 'TODO':
     case 'UNCONFIRMED':
       return 'todo'
+    case undefined:
     default:
       return 'unknown'
   }
@@ -168,6 +169,7 @@ export function normalizeCategory(value: string | undefined): YunxiaoWorkItemCat
       return 'Bug'
     case 'Task':
       return 'Task'
+    case undefined:
     default:
       return 'Req'
   }

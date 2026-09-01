@@ -163,7 +163,10 @@ export function YunxiaoConnectDialog({
               <Input
                 id={organizationId}
                 autoFocus
-                placeholder="5f7f2b1c9a8e4d2b6c3a1f0e"
+                placeholder={translate(
+                  'auto.components.yunxiao.connect.dialog.organization_placeholder',
+                  '5f7f2b1c9a8e4d2b6c3a1f0e'
+                )}
                 value={organization}
                 onChange={(event) => {
                   setOrganization(event.target.value)

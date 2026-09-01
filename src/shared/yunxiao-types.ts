@@ -25,7 +25,7 @@ export type YunxiaoViewer = {
   organizationName?: string
 }
 
-export type YunxiaoAccountSelection = string | 'all'
+export type YunxiaoAccountSelection = string
 
 export type YunxiaoConnectionStatus = {
   connected: boolean

@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { safeStorage } from 'electron'
 import {
   CredentialDecryptionError,
   credentialFileHasContent,
-  readStoredCredentialToken
+  readStoredCredentialToken,
+  writeEncryptedCredential
 } from '../integration-credential-file'
 import {
   YUNXIAO_DEFAULT_ENDPOINT,
@@ -152,15 +152,6 @@ export function writeAccountFile(file: YunxiaoAccountFile): void {
   })
 }
 
-function writeEncryptedToken(path: string, accessToken: string): void {
-  if (safeStorage.isEncryptionAvailable()) {
-    writeFileSync(path, safeStorage.encryptString(accessToken), { mode: 0o600 })
-    return
-  }
-  console.warn('[yunxiao] safeStorage encryption unavailable — storing token in plaintext')
-  writeFileSync(path, accessToken, { encoding: 'utf-8', mode: 0o600 })
-}
-
 export function readToken(accountId: string): string | null {
   const cached = cachedTokens.get(accountId)
   if (cached !== undefined) {
@@ -190,7 +181,7 @@ export function readToken(accountId: string): string | null {
 export function saveToken(accountId: string, accessToken: string): void {
   ensureDir(getOrcaDir())
   ensureDir(getTokenDir())
-  writeEncryptedToken(getTokenPath(accountId), accessToken)
+  writeEncryptedCredential('Yunxiao', getTokenPath(accountId), accessToken)
   cachedTokens.set(accountId, accessToken)
   credentialErrors.delete(accountId)
 }

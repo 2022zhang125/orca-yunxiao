@@ -1,5 +1,5 @@
 import { AGENT_HOOK_TARGETS, type AgentHookTarget } from './agent-hook-types'
-import { getTuiAgentDetectCommands, TUI_AGENT_CONFIG } from './tui-agent-config'
+import { TUI_AGENT_CONFIG } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
 
 export type ManagedAgentHookTarget = {
@@ -12,7 +12,10 @@ function target(agent: AgentHookTarget): ManagedAgentHookTarget {
   return {
     agent,
     tuiAgent: agent,
-    executableCandidates: getTuiAgentDetectCommands(TUI_AGENT_CONFIG[agent])
+    executableCandidates: [
+      TUI_AGENT_CONFIG[agent].detectCmd,
+      ...(TUI_AGENT_CONFIG[agent].detectCmdAliases ?? [])
+    ]
   }
 }
 

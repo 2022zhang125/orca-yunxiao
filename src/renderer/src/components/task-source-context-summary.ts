@@ -1,22 +1,23 @@
 import { translate } from '@/i18n/i18n'
-import { getExecutionHostLabel } from '../../../shared/execution-host'
-import type { ExecutionHostScope } from '../../../shared/execution-host'
+import { getExecutionHostLabel, type ExecutionHostScope } from '../../../shared/execution-host'
 import type { ExecutionHostHealth } from '../../../shared/execution-host-registry'
 import type { SshConnectionStatus } from '../../../shared/ssh-types'
 import type { TaskProvider } from '../../../shared/task-providers'
 import type { TaskProviderIdentity, TaskSourceContext } from '../../../shared/task-source-context'
-
+import {
+  formatLongTaskSourceList,
+  formatShortTaskSourceList,
+  getTaskSourceAvailabilityLabel
+} from './task-source-summary-list-labels'
 export type TaskSourceContextSummary = {
   label: string
   title: string
 }
-
 export type TaskSourceAvailabilityNotice = {
   label: string
   title: string
   blocking: boolean
 }
-
 export type TaskSourceHostAvailability = {
   hostId: ExecutionHostScope
   status?: SshConnectionStatus
@@ -28,13 +29,10 @@ export type TaskSourceHostAvailability = {
     | 'unavailable-source-tool'
     | 'unsupported-provider'
 }
-
 type HostLabelLookup = ReadonlyMap<string, string> | undefined
-
 function getHostLabel(hostId: ExecutionHostScope, hostLabelById: HostLabelLookup): string {
   return hostLabelById?.get(hostId) ?? getExecutionHostLabel(hostId)
 }
-
 export function getTaskSourceContextSummary(args: {
   provider: TaskProvider
   providerLabel: string
@@ -74,7 +72,6 @@ export function getTaskSourceContextSummary(args: {
       })
   }
 }
-
 export function getTaskSourceAvailabilityNotice(args: {
   providerLabel: string
   hostAvailability?: readonly TaskSourceHostAvailability[]
@@ -105,7 +102,7 @@ export function getTaskSourceAvailabilityNotice(args: {
     title: translate(
       'auto.components.taskSourceContextSummary.reconnectOrUpdateTitle',
       'Reconnect or update {{value0}} to load this source.',
-      { value0: formatLongList(hostStatusLabels) }
+      { value0: formatLongTaskSourceList(hostStatusLabels) }
     ),
     blocking
   }
@@ -123,30 +120,31 @@ function getRepoBackedTaskSourceSummary(args: {
     contexts.map((context) => getHostLabel(context.hostId, args.hostLabelById))
   )
   const unavailableHosts = getUnavailableHosts(args.hostAvailability ?? [], args.hostLabelById)
-  const availabilityLabel = getAvailabilityLabel(unavailableHosts)
+  const availabilityLabel = getTaskSourceAvailabilityLabel(unavailableHosts)
   const identityLabels = uniqueLabels(
     contexts.map((context) => getProviderIdentityLabel(context.providerIdentity))
   )
   const accountLabels = uniqueLabels(contexts.map((context) => context.accountLabel))
   const repoCount = args.selectedRepoCount ?? contexts.length
-  const hostLabel = hostLabels.length === 0 ? 'No host' : formatShortList(hostLabels)
-  const accountLabel = accountLabels.length > 0 ? `Account: ${formatLongList(accountLabels)}` : null
+  const hostLabel = hostLabels.length === 0 ? 'No host' : formatShortTaskSourceList(hostLabels)
+  const accountLabel =
+    accountLabels.length > 0 ? `Account: ${formatLongTaskSourceList(accountLabels)}` : null
   const targetLabel =
     accountLabels.length > 1
-      ? formatShortList(accountLabels)
+      ? formatShortTaskSourceList(accountLabels)
       : repoCount > 1
         ? `${repoCount} projects`
         : (identityLabels[0] ?? contexts[0]?.accountLabel ?? 'Selected project')
   const titleParts = [
     args.providerLabel,
-    hostLabels.length > 0 ? `Host: ${formatLongList(hostLabels)}` : null,
+    hostLabels.length > 0 ? `Host: ${formatLongTaskSourceList(hostLabels)}` : null,
     unavailableHosts.length > 0
-      ? `Availability: ${formatLongList(
+      ? `Availability: ${formatLongTaskSourceList(
           unavailableHosts.map((host) => `${host.hostLabel} ${host.statusLabel}`)
         )}`
       : null,
     accountLabel,
-    identityLabels.length > 0 ? `Source: ${formatLongList(identityLabels)}` : null,
+    identityLabels.length > 0 ? `Source: ${formatLongTaskSourceList(identityLabels)}` : null,
     repoCount > 1 ? `${repoCount} selected projects` : null
   ].filter((part): part is string => Boolean(part))
 
@@ -175,7 +173,7 @@ function getAccountBackedTaskSourceSummary(
     `${providerLabel} source`,
     `Host: ${hostLabel}`,
     availabilityLabel
-      ? `Availability: ${formatLongList(
+      ? `Availability: ${formatLongTaskSourceList(
           unavailableHosts.map((host) => `${host.hostLabel} ${host.statusLabel}`)
         )}`
       : null,
@@ -284,18 +282,6 @@ function getAvailabilityStatusLabel(availability: TaskSourceHostAvailability): s
   }
 }
 
-function getAvailabilityLabel(
-  unavailableHosts: readonly { hostLabel: string; statusLabel: string }[]
-): string | null {
-  if (unavailableHosts.length === 0) {
-    return null
-  }
-  if (unavailableHosts.length === 1) {
-    return unavailableHosts[0].statusLabel
-  }
-  return `${unavailableHosts.length} unavailable`
-}
-
 function getSshStatusLabel(status: SshConnectionStatus): string {
   switch (status) {
     case 'connected':
@@ -312,15 +298,4 @@ function getSshStatusLabel(status: SshConnectionStatus): string {
     case 'disconnected':
       return 'disconnected'
   }
-}
-
-function formatShortList(labels: readonly string[]): string {
-  if (labels.length <= 2) {
-    return labels.join(', ')
-  }
-  return `${labels[0]} +${labels.length - 1}`
-}
-
-function formatLongList(labels: readonly string[]): string {
-  return labels.join(', ')
 }

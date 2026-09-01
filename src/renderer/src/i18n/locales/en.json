@@ -527,6 +527,9 @@
               }
             }
           }
+        },
+        "yunxiao": {
+          "connection_superseded": "Yunxiao connection was superseded by a newer request."
         }
       }
     },
@@ -16547,7 +16550,8 @@
             "storage_remote": "Your token is sent to the selected remote runtime and stored there with runtime-supported encryption.",
             "cancel": "Cancel",
             "verifying": "Verifying…",
-            "connect": "Connect"
+            "connect": "Connect",
+            "organization_placeholder": "5f7f2b1c9a8e4d2b6c3a1f0e"
           }
         }
       }

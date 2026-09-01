@@ -3,13 +3,10 @@ import type {
   PendingWorktreeCreation,
   WorktreeCreationRequest
 } from '@/lib/pending-worktree-creation'
-
 const { prepareEphemeralVmWorkspaceTargetMock } = vi.hoisted(() => ({
   prepareEphemeralVmWorkspaceTargetMock: vi.fn()
 }))
-
 type TestActiveView = 'terminal' | 'tasks'
-
 const store = {
   settings: {
     activeRuntimeEnvironmentId: null as string | null,
@@ -47,25 +44,12 @@ const store = {
   tabsByWorktree: {} as Record<string, { id: string; launchAgent?: string }[]>,
   unifiedTabsByWorktree: {}
 }
-
-vi.mock('@/store', () => ({
-  useAppStore: {
-    getState: () => store
-  }
-}))
-
-vi.mock('@/lib/browser-uuid', () => ({
-  createBrowserUuid: () => 'creation-1'
-}))
-
-vi.mock('@/lib/worktree-activation', () => ({
-  activateAndRevealWorktree: vi.fn(() => false)
-}))
-
+vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
+vi.mock('@/lib/browser-uuid', () => ({ createBrowserUuid: () => 'creation-1' }))
+vi.mock('@/lib/worktree-activation', () => ({ activateAndRevealWorktree: vi.fn(() => false) }))
 vi.mock('@/lib/worktree-initial-terminal-seeding', () => ({
   ensureWorktreeHasInitialTerminal: vi.fn()
 }))
-
 vi.mock('@/lib/workspace-activation-terminal-focus', () => ({
   queueWorkspaceActivationTerminalFocus: vi.fn()
 }))

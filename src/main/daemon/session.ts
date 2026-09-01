@@ -209,9 +209,7 @@ export class Session {
     }
   }
 
-  signal(sig: string): void {
-    this.termination.signal(sig)
-  }
+  signal = (sig: string): void => this.termination.signal(sig)
 
   attachClient(client: Omit<AttachedClient, 'token'>): symbol {
     return this.output.attachClient(client)
@@ -235,13 +233,9 @@ export class Session {
     return this.output.getSnapshot(opts)
   }
 
-  getPartialEscapeTailAnsi(): string {
-    return this.output.getPartialEscapeTailAnsi()
-  }
+  getPartialEscapeTailAnsi = (): string => this.output.getPartialEscapeTailAnsi()
 
-  getAppliedSize(): { cols: number; rows: number } | null {
-    return this.output.getAppliedSize()
-  }
+  getAppliedSize = (): { cols: number; rows: number } | null => this.output.getAppliedSize()
 
   takePendingOutput(
     includeSnapshot: boolean,
@@ -257,13 +251,9 @@ export class Session {
     )
   }
 
-  getCwd(): string | null {
-    return this.output.getCwd()
-  }
+  getCwd = (): string | null => this.output.getCwd()
 
-  getForegroundProcess(): string | null {
-    return this.subprocess.getForegroundProcess()
-  }
+  getForegroundProcess = (): string | null => this.subprocess.getForegroundProcess()
 
   async confirmForegroundProcess(): Promise<string | null> {
     return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
@@ -331,25 +321,20 @@ export class Session {
     }
   }
 
-  /** fd-release-only teardown for ALREADY-exited sessions still retained in the host map; skips
-   *  SIGKILL, so callers MUST NOT use it on live sessions. Separate method because a reaped pid is
-   *  eligible for POSIX reuse, so SIGKILL could otherwise hit an unrelated process. */
+  /** Releases an exited session's fd only; SIGKILL could hit a reused PID. */
   disposeSubprocess(): void {
     this.#teardownSubprocess()
     this._state = 'exited'
   }
 
-  /** Orderly-shutdown path (TerminalHost.dispose()) for live sessions: force-kills the child, then
-   *  synchronously frees the ptmx fd, bypassing the 5s KILL_TIMEOUT_MS fallback. Does NOT fan out
-   *  onExit (renderer reconnects cold after daemon exit). Callers MUST check isAlive first. */
+  /** Orderly live-session shutdown; callers must verify isAlive first. */
   async forceKillAndDisposeSubprocess(): Promise<void> {
     // Why: daemon exit can't neutralize the native handle until a bounded retry lands and onExit proves the child was reaped.
     await this.forceKillAndWaitForExit()
     this.dispose()
   }
 
-  /** Shared teardown for dispose()/forceKillAndDisposeSubprocess(). Does NOT set `_state` — the
-   *  caller owns that after capturing pre-flip invariants (see the wasTerminating capture in dispose). */
+  /** Shared teardown; callers set state after capturing pre-flip invariants. */
   #teardownSubprocess(): void {
     if (this._disposed) {
       return
@@ -374,10 +359,7 @@ export class Session {
     this.shellReady.disposePromptReadinessProbe()
     this.shellReady.releaseHeldBytes()
     this.startupIngress.drainAndClose()
-    // Why after drainAndClose: drained ingress bytes re-enter the barrier and can
-    // open a fresh episode; flushing here delivers them too. A shell exiting
-    // mid-proof must not strand the queued post-133;D prompt — those bytes belong
-    // to clients, records, and history before broadcastExit below.
+    // Why after drainAndClose: flush the re-entered bytes before broadcasting exit.
     this.recoveryBarrier.flushPending()
     this._exitCode = code
     this._state = 'exited'
@@ -389,8 +371,7 @@ export class Session {
     this.shellReady.clearReadyTimer()
     this.shellReady.clearFlushGate()
 
-    // Why: release the ptmx fd here or node-pty's _socket leaks the master fd until GC (docs/fix-pty-fd-leak.md).
-    // Not via #teardownSubprocess: it flips `_disposed`, short-circuiting the later Session.dispose() reaper.
+    // Why: this prevents node-pty fd leaks without short-circuiting Session.dispose().
     this.termination.disposeSubprocessHandle()
 
     this.output.broadcastExit(code, this.incarnationId, cause)
@@ -399,7 +380,5 @@ export class Session {
     this.onSessionExit?.(code)
   }
 
-  closeStartupQueryAuthority(): number {
-    return this.startupIngress.closeQueryAuthority()
-  }
+  closeStartupQueryAuthority = (): number => this.startupIngress.closeQueryAuthority()
 }

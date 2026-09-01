@@ -129,7 +129,13 @@ export function getAutomationTargetAvailability({
     return sourceAvailability
   }
 
-  const sshTargetId = getAutomationSshTargetId(automation, repo)
+  const parsedHost = parseExecutionHostId(automation.runContext?.hostId)
+  const sshTargetId =
+    parsedHost?.kind === 'ssh'
+      ? parsedHost.targetId
+      : automation.executionTargetType === 'ssh'
+        ? automation.executionTargetId.trim()
+        : repo.connectionId?.trim() || null
   if (!sshTargetId) {
     return { canRunNow: true, reason: 'available', message: null }
   }
@@ -251,7 +257,6 @@ function getAutomationSourceAvailability(
   }
   return null
 }
-
 function getAutomationSourceProviderLabel(provider: TaskSourceContext['provider']): string {
   switch (provider) {
     case 'github':
@@ -266,7 +271,6 @@ function getAutomationSourceProviderLabel(provider: TaskSourceContext['provider'
       return '云效'
   }
 }
-
 export function getRuntimeAutomationAvailability(
   environmentId: string,
   runtimeStatusByEnvironmentId:
@@ -304,18 +308,6 @@ export function getRuntimeAutomationAvailability(
   }
   return { canRunNow: true, reason: 'available', message: null }
 }
-
-function getAutomationSshTargetId(automation: Automation, repo: Repo): string | null {
-  const parsedHost = parseExecutionHostId(automation.runContext?.hostId)
-  if (parsedHost?.kind === 'ssh') {
-    return parsedHost.targetId
-  }
-  if (automation.executionTargetType === 'ssh' && automation.executionTargetId.trim()) {
-    return automation.executionTargetId
-  }
-  return repo.connectionId?.trim() || null
-}
-
 function unavailable(
   reason: Exclude<AutomationTargetAvailability['reason'], 'available'>,
   message: string

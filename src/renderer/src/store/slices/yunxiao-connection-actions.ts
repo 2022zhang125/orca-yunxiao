@@ -12,6 +12,7 @@ import {
   yunxiaoTestConnection
 } from '@/runtime/runtime-yunxiao-client'
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
+import { translate } from '@/i18n/i18n'
 import {
   beginYunxiaoMutation,
   beginYunxiaoStatusRead,
@@ -104,7 +105,13 @@ export function createYunxiaoConnectionActions({ set, get, clearInflight }: Stor
           !isCurrentYunxiaoMutation(generation) ||
           !isCurrentYunxiaoRuntimeContext(contextKey, get().settings)
         ) {
-          return { ok: false as const, error: '云效 connection was superseded by a newer request.' }
+          return {
+            ok: false as const,
+            error: translate(
+              'auto.store.slices.yunxiao.connection_superseded',
+              'Yunxiao connection was superseded by a newer request.'
+            )
+          }
         }
         set({
           yunxiaoStatus: { connected: true, viewer: result.viewer },
