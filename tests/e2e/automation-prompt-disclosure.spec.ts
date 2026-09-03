@@ -34,13 +34,25 @@ test('automation detail keeps short prompts readable and reveals a very long pro
         enabled: false,
         missedRunGraceMinutes: 720
       }
-      await window.api.automations.create({
-        ...base,
+      const create = async (input: { name: string; prompt: string }): Promise<void> => {
+        const response = await window.api.runtime.call({
+          method: 'automation.create',
+          params: {
+            ...base,
+            ...input,
+            repo: `id:${repo.id}`,
+            destination: { selector: { kind: 'self' } }
+          }
+        })
+        if (!response.ok) {
+          throw new Error(response.error.message)
+        }
+      }
+      await create({
         name: shortName,
         prompt: 'Synthetic short prompt.'
       })
-      await window.api.automations.create({
-        ...base,
+      await create({
         name: longName,
         prompt: [
           'Synthetic prompt preview validation only.',
@@ -56,8 +68,7 @@ test('automation detail keeps short prompts readable and reveals a very long pro
           endMarker
         ].join('\n')
       })
-      await window.api.automations.create({
-        ...base,
+      await create({
         name: resizeName,
         prompt: resizePrompt
       })
